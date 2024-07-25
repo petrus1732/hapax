@@ -65,8 +65,8 @@ export default function SquareBoard({ size }: { size: number }) {
     <div>
       <div className='text-center h-8 text-xl'>{path.map(id => letters[id]).join('')}</div>
       <div
-        style={{ width: `${boardSize}px`, height: `${boardSize}px` }}
-        className="grid text-center grid-rows-4 grid-cols-4"
+        style={{ width: `${boardSize}px`, height: `${boardSize}px`, gridTemplateColumns: `repeat(${size}, 1fr)` }}
+        className="grid gap-1 mx-auto"
         onMouseUp={handleMouseUp}
       >
         {Array(size * size).fill(null).map((_, id) => (
