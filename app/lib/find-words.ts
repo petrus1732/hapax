@@ -4,7 +4,6 @@ import { Trie, TrieNode } from './trie';
 type Board = string[][];
 
 export function findWords(board: Board, trie: Trie): string[] {
-  console.log(trie)
   const result: string[] = [];
   const rows = board.length;
   const cols = board[0].length;
@@ -16,7 +15,6 @@ export function findWords(board: Board, trie: Trie): string[] {
   ];
 
   function backtrack(row: number, col: number, path: string, node: TrieNode) {
-    console.log(row, col, path, node);
     if (row < 0 || col < 0 || row >= rows || col >= cols || visited[row][col]) return;
     const char = board[row][col];
     if (!node?.children.has(char)) return;
@@ -26,7 +24,6 @@ export function findWords(board: Board, trie: Trie): string[] {
     node = node.children.get(char)!;
 
     if (node.isEndOfWord) {
-      console.log(path);
       result.push(path);
       node.isEndOfWord = false; // To avoid duplicate words
     }

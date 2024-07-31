@@ -44,7 +44,7 @@ export default function Create() {
     }    
   }, [wordlist]);
 
-  useEffect(() => console.log(trie), [trie])
+  useEffect(() => console.log(trie, wordlist), [trie])
 
   const handleFindWords =  (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
