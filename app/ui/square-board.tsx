@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import Tile from "./tile";
 
-export default function SquareBoard({ size }: { size: number }) {
-  const letters: string = 'ABCDEFGHIJKLMNOP';
+export default function SquareBoard({ size, letters }: { size: number, letters: string }) {
   const boardSize: number = 288;
   const fontSize: number = (boardSize / size) * 0.5;
 
