@@ -3,6 +3,8 @@ import { number, z } from 'zod';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { signIn } from '@/auth';
+import { AuthError } from 'next-auth';
  
 const BaseFormSchema = z.object({
   id: z.string(),
@@ -62,4 +64,25 @@ export async function createBoard(prevState: State, formData: FormData) {
   }
   revalidatePath('/');
   redirect('/');
+}
+
+export async function authenticate(
+  prevState: string | undefined,
+  formData: FormData,
+) {
+  try {
+    await signIn('credentials', formData);
+    console.log('try sign in');
+  } catch (error) {
+    if (error instanceof AuthError) {
+      console.log(error)
+      switch (error.type) {
+        case 'CredentialsSignin':
+          return 'Invalid credentials.';
+        default:
+          return 'Something went wrong.';
+      }
+    }
+    throw error;
+  }
 }
