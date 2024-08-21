@@ -11,7 +11,7 @@ export default function Home() {
         <Link href='/create' className="flex h-16 grow items-center justify-center gap-2 rounded-md p-3 text-xl font-medium border border-gray-300 dark:border-neutral-700 hover:bg-sky-100 hover:text-blue-600">
           Create
         </Link>
-        <Link href='/' className="flex h-16 grow items-center justify-center gap-2 rounded-md p-3 text-xl font-medium border border-gray-300 dark:border-neutral-700 hover:bg-sky-100 hover:text-blue-600">
+        <Link href='/boards' className="flex h-16 grow items-center justify-center gap-2 rounded-md p-3 text-xl font-medium border border-gray-300 dark:border-neutral-700 hover:bg-sky-100 hover:text-blue-600">
           Boards
         </Link>
       </div>

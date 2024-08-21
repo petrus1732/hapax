@@ -8,6 +8,7 @@ import { createBoard } from "../lib/actions";
 import { useState, useEffect } from "react";
 import { findWords } from "../lib/find-words";
 import { Trie } from "../lib/trie";
+import { useSession } from "next-auth/react"
 
 export default function Create() {
   
@@ -18,6 +19,8 @@ export default function Create() {
   const [wordlist, setWordlist] = useState<string[]>([]);
   const [words, setWords] = useState<string[][]>([]);
   const [trie, setTrie] = useState<Trie | null>(null);
+  const { data: session, status } = useSession();
+
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');
     if (!response.ok) {
@@ -71,8 +74,33 @@ export default function Create() {
   };
 
   return(
-    <main className="flex min-h-screen flex-col items-center  p-24">
+    <main className="flex min-h-screen flex-col items-center p-24">
       <form action={formAction} className="mb-4">
+        <div className="mb-4 w-72">
+          {session?.user? "" : "Log in to store your board!"}
+        </div>
+        <div className="mb-4 w-72">
+          <label htmlFor="boardSize" className="mb-2 block text-sm font-medium">
+            Board name (optional)
+          </label>
+          <div className="relative">
+            <input 
+              id="boardName"
+              name="boardName"
+              className="peer block w-full cursor-pointer rounded-md border border-gray-200 py-2 pl-2 text-sm outline-2 placeholder:text-gray-500"
+              defaultValue=""
+              aria-describedby="board-name-error">
+            </input>
+          </div>
+          <div id="board-name-error" aria-live="polite" aria-atomic="true">
+            {state.errors?.boardName &&
+              state.errors.boardName.map((error: string) => (
+                <p className="mt-2 text-sm text-red-500" key={error}>
+                  {error}
+                </p>
+              ))}
+          </div>
+        </div>
         <div className="mb-4 w-72">
           <label htmlFor="boardSize" className="mb-2 block text-sm font-medium">
             Select board size (3~10)

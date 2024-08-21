@@ -5,9 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+import { auth } from '@/auth';
  
 const BaseFormSchema = z.object({
   id: z.string(),
+  boardName: z.string().max(30, "The input should be 30 characters or fewer."),
   size: z.coerce.number().min(3, { message: "Size field must be filled." }).max(10, { message: "Size must be at most 10." }),
   letters: z.string({
     invalid_type_error: 'Please enter the letters.',
@@ -22,6 +24,7 @@ const CreateBoard = BaseFormSchema.omit({ id: true, date: true }).refine(data =>
 
 export type State = {
   errors?: {
+    boardName?: string[];
     size?: string[];
     letters?: string[];
   };
@@ -31,8 +34,10 @@ export type State = {
 };
 
 export async function createBoard(prevState: State, formData: FormData) {
+  const session = await auth();
   const boardSize = Number(formData.get('boardSize'));
   const rawFormData = {
+    boardName: formData.get('boardName'),
     size: boardSize,
     letters: Array(boardSize * boardSize).fill(null).map((_, id) => formData.get(`letter${id}`)).join('').toUpperCase()
   };
@@ -47,13 +52,13 @@ export async function createBoard(prevState: State, formData: FormData) {
     };
   }
   
-  const { size, letters } = validatedFields.data;
+  const { boardName, size, letters } = validatedFields.data;
   const date = new Date().toISOString().split('T')[0];
 
   try {
     await sql`
-      INSERT INTO boards (size, letters, date)
-      VALUES (${size}, ${letters}, ${date})
+      INSERT INTO boards (author, boardName, size, letters, date)
+      VALUES (${session?.user? session.user.name : "anonymous"}, ${boardName}, ${size}, ${letters}, ${date})
     `;
     console.log("successfully add board");
   } catch (error) {
