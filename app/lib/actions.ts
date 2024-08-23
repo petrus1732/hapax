@@ -57,7 +57,7 @@ export async function createBoard(prevState: State, formData: FormData) {
 
   try {
     await sql`
-      INSERT INTO boards (author, boardName, size, letters, date)
+      INSERT INTO boards (author, "boardName", size, letters, date)
       VALUES (${session?.user? session.user.name : "anonymous"}, ${boardName}, ${size}, ${letters}, ${date})
     `;
     console.log("successfully add board");
@@ -67,7 +67,7 @@ export async function createBoard(prevState: State, formData: FormData) {
       message: 'Database Error: Failed to Create Board.',
     };
   }
-  revalidatePath('/');
+  revalidatePath('/boards');
   redirect('/');
 }
 

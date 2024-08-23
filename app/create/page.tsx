@@ -47,8 +47,6 @@ export default function Create() {
     }    
   }, [wordlist]);
 
-  useEffect(() => console.log(trie, wordlist), [trie])
-
   const handleFindWords =  (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     if (!trie) return;
@@ -57,12 +55,12 @@ export default function Create() {
       const formData = new FormData(form);
       const letters = Array(size*size).fill(null).map((_, id) => formData.get(`letter${id}`)).join('').toUpperCase()
       if (/^[A-Z]+$/.test(letters) && letters.length === size*size) {
-        const board: string[][] = [];
+        const boardArray: string[][] = [];
         for (let i = 0; i < size; i++) {
           const row = letters.slice(i * size, (i + 1) * size).split('');
-          board.push(row);
+          boardArray.push(row);
         }
-        const ws = findWords(board, trie).sort((a, b) => a.length === b.length? (a < b? -1 : 1) : (a.length - b.length));
+        const ws = findWords(boardArray, trie).sort((a, b) => a.length === b.length? (a < b? -1 : 1) : (a.length - b.length));
         const validWords: string[][] = [];
         ws.forEach(w => {
           if (!validWords[w.length]) validWords[w.length] = [];

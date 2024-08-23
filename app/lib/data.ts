@@ -16,6 +16,22 @@ export async function fetchBoards() {
   }
 }
 
+export async function fetchBoardById(id: string) {
+  try {
+    console.log('Database URL:', process.env.POSTGRES_URL);
+    const data = await sql<Board>`
+      SELECT *
+      FROM boards
+      WHERE boards.id = ${id};
+    `;
+
+    return data.rows[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch board.');
+  }
+}
+
 // export async function fetchLatestInvoices() {
 //   try {
 //     const data = await sql<LatestInvoiceRaw>`
