@@ -87,7 +87,7 @@ export default function SquareBoard({
       // Check the validity of the word
       if (currentPath.length >= minLength) {
         const word = currentPath.map((i) => letters[i]).join('');
-        if (validWords[word.length].includes(word)) {
+        if (validWords[word.length]?.includes(word)) {
           if (swiped[word]) setWordColor('yellow');
           else {
             setSwiped((arr) => ({
@@ -113,7 +113,7 @@ export default function SquareBoard({
           height: `${boardSize}px`,
           gridTemplateColumns: `repeat(${size}, 1fr)`,
         }}
-        className="grid gap-2 mx-auto"
+        className="grid gap-3 mx-auto"
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
       >
