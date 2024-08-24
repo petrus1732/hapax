@@ -87,6 +87,7 @@ export default function SquareBoard({
       // Check the validity of the word
       if (currentPath.length >= minLength) {
         const word = currentPath.map((i) => letters[i]).join('');
+        console.log(validWords[word.length])
         if (validWords[word.length]?.includes(word)) {
           if (swiped[word]) setWordColor('yellow');
           else {

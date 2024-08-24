@@ -111,7 +111,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
         show={openModal} 
         onClose={() => setOpenModal(false)}>
           <Modal.Header className="bg-white dark:bg-black p-2 pl-8">Words</Modal.Header>
-          <Modal.Body className="bg-white dark:bg-black">
+          <Modal.Body className="bg-white dark:bg-black overflow-y-auto" style={{ maxHeight: 'calc(100vh - 54px - 3rem)' }}>
             <div className="m-2">
               <input type="checkbox" id="mask" checked={!mask} onChange={(e) => setMask(!e.target.checked)} />
               <label htmlFor="mask" className="ml-2">reveal letters</label>
