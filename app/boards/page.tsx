@@ -1,7 +1,12 @@
-import { fetchBoards } from "../lib/data";
-import BoardsClient from "./BoardsClient"; // Import the client component
+import BoardsClient from "./boards-client"; // Import the client component
+import { Suspense } from "react";
 
 export default async function BoardsPage() {
-  const boards = await fetchBoards(); // Fetch data on the server side
-  return <BoardsClient boards={boards} />;
+  return (
+    <main className="flex min-h-screen flex-col items-center p-24">
+      <Suspense fallback={<div>Loading boards...</div>}>
+        <BoardsClient />
+      </Suspense>
+    </main>
+  );
 }

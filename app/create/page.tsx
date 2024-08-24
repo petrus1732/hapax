@@ -107,7 +107,7 @@ export default function Create() {
             <select
               id="boardSize"
               name="boardSize"
-              className="peer block w-full cursor-pointer rounded-md border border-gray-200 py-2 pl-2 text-sm outline-2 placeholder:text-gray-500"
+              className="peer block w-full cursor-pointer rounded-md border border-gray-200 py-2 pl-2 text-sm outline-2 placeholder:text-gray-500 dark:bg-black"
               defaultValue=""
               aria-describedby="size-error"
               onChange={e => setSize(Number(e.target.value))}
