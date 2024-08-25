@@ -30,9 +30,11 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   useEffect(() => {
     const foundBoard = boards? boards[+params.id-1] : null;
     if (foundBoard) {
+      console.log('board already fetched')
       setBoard(foundBoard);
     } else {
       // Fallback if data isn't already available
+      console.log('board has not been fetched')
       const fetchData = async () => {
         try {
           console.log("Finding board " + params.id);
@@ -50,7 +52,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   useEffect(() => {
     getWordlist()
       .then((response) => {
-        setWordlist(response.message.split(/\r?\n/));
+        setWordlist(response.message);
   })
       .catch(console.error);
   }, []);
