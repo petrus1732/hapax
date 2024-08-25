@@ -13,7 +13,6 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   const { boards } = useBoards(); 
   const [board, setBoard] = useState<Board | null>(null);
   const [openModal, setOpenModal] = useState<boolean>(false);
-  const [modalPlacement, setModalPlacement] = useState('center')
   const [mask, setMask] = useState<boolean>(true);
   const [wordlist, setWordlist] = useState<string[]>([]);
   const [words, setWords] = useState<string[][]>([]);
@@ -86,16 +85,6 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
   }, [trie, board])
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 768) setModalPlacement('center');
-      else setModalPlacement('bottom-left')
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   if (!board) return <div>Loading...</div>; 
 
   return (
@@ -106,12 +95,12 @@ export default function BoardClient({ params }: { params: {id: string}}) {
           {Object.keys(swiped).length}/{words.flat().length}
         </div>
         <Modal 
-        position={modalPlacement}
         className="translate-y-14 h-[calc(100vh-54px)]" 
+        style={{maxWidth: '768px', margin: 'auto'}}
         show={openModal} 
         onClose={() => setOpenModal(false)}>
-          <Modal.Header className="bg-white dark:bg-black p-2 pl-8">Words</Modal.Header>
-          <Modal.Body className="bg-white dark:bg-black overflow-y-auto" style={{ maxHeight: 'calc(100vh - 54px - 3rem)' }}>
+          <Modal.Header className="bg-white dark:bg-black p-2">Words</Modal.Header>
+          <Modal.Body className="bg-white dark:bg-black overflow-y-auto" style={{ maxHeight: 'calc(100vh - 54px - 9rem)' }}>
             <div className="m-2">
               <input type="checkbox" id="mask" checked={!mask} onChange={(e) => setMask(!e.target.checked)} />
               <label htmlFor="mask" className="ml-2">reveal letters</label>

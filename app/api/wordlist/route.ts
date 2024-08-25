@@ -4,6 +4,6 @@ import path from 'path';
 
 export async function GET() {
   const filePath = path.join(process.cwd(), 'public/CSW2019.txt');
-  const wordlist = fs.readFileSync(filePath, 'utf-8')
+  const wordlist = fs.readFileSync(filePath, 'utf-8').split(/\r?\n/)
   return NextResponse.json({ message: wordlist });
 }

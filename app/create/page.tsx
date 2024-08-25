@@ -32,7 +32,7 @@ export default function Create() {
   useEffect(() => {
     getWordlist()
       .then((response) => {
-        setWordlist(response.message.split(/\r?\n/));
+        setWordlist(response.message);
   })
       .catch(console.error);
   }, []);
