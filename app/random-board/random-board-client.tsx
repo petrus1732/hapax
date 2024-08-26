@@ -9,7 +9,8 @@ import { fetchBoardById } from "@/app/lib/data";
 import { findWords } from "@/app/lib/find-words";
 import { Trie } from "@/app/lib/trie";
 
-export default function BoardClient({ params }: { params: {id: string}}) {
+export default function RandomBoardClient() {
+  const size = 4
   const { boards } = useBoards(); 
   const [board, setBoard] = useState<Board | null>(null);
   const [openModal, setOpenModal] = useState<boolean>(false);
@@ -26,30 +27,31 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
     return response.json();
   };
-
-  useEffect(() => {
-    const foundBoard = boards? boards[+params.id-1] : null;
-    if (foundBoard) {
-      console.log('board already fetched')
-      setBoard(foundBoard);
-    } else {
-      // Fallback if data isn't already available
-      console.log('board has not been fetched')
-      const fetchData = async () => {
-        try {
-          console.log("Finding board " + params.id);
-          const fetchedBoard = await fetchBoardById(params.id);
-          setBoard(fetchedBoard);
-        } catch (error) {
-          console.error("Error fetching board:", error);
-        }
-      };
   
-      fetchData(); // Call the async function
+  const generateRandomboard = () => {
+    let letters = '';
+    const vowel = 'AEIOUY';
+    const vowelProp = 0.3;
+    const consanant = "BCDFGHJKLMNPQRSTVWXZ";
+    for (let i = 0; i < size*size; i++) {
+      letters += Math.random() < vowelProp? vowel[Math.floor(Math.random()*vowel.length)] : consanant[Math.floor(Math.random()*consanant.length)];
     }
-  }, [boards, params.id]);
+    console.log(`letters: ${letters}`)
+    const randomBoard: Board = {
+      id: 'random id',
+      author: 'Random',
+      boardName: 'random board',
+      size: 4,
+      letters,
+      date: new Date().toISOString().split('T')[0]
+    } 
+    console.log(randomBoard)
+    setBoard(randomBoard);
+  }
 
   useEffect(() => {
+    console.log('qq')
+    generateRandomboard();
     getWordlist()
       .then((response) => {
         setWordlist(response.message);
@@ -90,7 +92,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   if (!board) return <div>Loading...</div>; 
 
   return (
-    <div className="flex flex-col items-center">
+    <main className="flex flex-col items-center">
     {board && wordsLength > 0?
       <div>
         <div onClick={() => setOpenModal(true)} className="p-3 text-6xl text-center">
@@ -133,6 +135,6 @@ export default function BoardClient({ params }: { params: {id: string}}) {
       </div> :
       <div>Loading...</div>
     }
-    </div>
+    </main>
   )
 }

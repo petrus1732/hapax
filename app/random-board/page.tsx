@@ -1,12 +1,12 @@
-import BoardsClient from "./boards-client"; // Import the client component
+import RandomBoardClient from "./random-board-client";
 import { Suspense } from "react";
 
-export default async function BoardsPage() {
+export default function Page() {
   return (
     <main className="flex min-h-dvh flex-col items-center p-24">
       <Suspense fallback={<div>Loading boards...</div>}>
-        <BoardsClient />
+        <RandomBoardClient></RandomBoardClient>
       </Suspense>
     </main>
-  );
+  )
 }
