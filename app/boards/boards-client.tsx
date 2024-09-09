@@ -17,6 +17,7 @@ export default function BoardsClient() {
       try {
         const data = await fetchBoards();
         setBoards(data);
+        console.log(data)
       } catch (err) {
         setError('Failed to fetch boards');
       } finally {

@@ -28,7 +28,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   };
 
   useEffect(() => {
-    const foundBoard = boards? boards[+params.id-1] : null;
+    const foundBoard = boards? boards.find(b => b.id == params.id) : null;
     if (foundBoard) {
       console.log('board already fetched')
       setBoard(foundBoard);
