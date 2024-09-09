@@ -6,7 +6,7 @@ import {
 export async function fetchBoards() {
   try {
 
-    const data = await sql<Board>`SELECT * FROM boards`;
+    const data = await sql<Board>`SELECT * FROM boards ORDER BY date DESC`;
     console.log(data.rows);
 
     return data.rows;

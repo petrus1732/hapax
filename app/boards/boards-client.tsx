@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useBoards } from "../provider";
 import { useEffect, useState } from "react";
 import { fetchBoards } from "../lib/data";
-import { Table } from "flowbite-react";
+import { useRouter } from "next/navigation";
 
 export default function BoardsClient() {
+  const router = useRouter();
   const { boards, setBoards } = useBoards();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,15 +50,12 @@ export default function BoardsClient() {
                 <th scope="col" className="px-3 py-5 font-medium">
                   Date
                 </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  
-                </th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-gray-200">
               {boards.map((board, id) => (
-                <tr key={id} className="group">
+                <tr key={id} className="group" onClick={() => router.push(`/boards/${board.id}`)}>
                   <td className=" px-2 py-5 text-sm">
                     {board.boardName}
                   </td>
@@ -66,11 +64,6 @@ export default function BoardsClient() {
                   </td>
                   <td className="whitespace-nowrap px-2 py-5 text-sm">
                     {board.date}
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-5 text-sm">
-                    <Link href={`/boards/${board.id}`} className="flex grow items-center justify-center gap-2 rounded-md p-2 text-md font-medium border border-gray-300 dark:border-neutral-700 hover:bg-sky-100 hover:text-blue-600">
-                      Play
-                    </Link>
                   </td>
                 </tr>
               ))}
