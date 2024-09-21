@@ -22,7 +22,7 @@ export default function SquareBoard({
 }: SquareBoardProps) {
   const boardSize: number = 288;
   const fontSize: number = (boardSize / size) * 0.5;
-  const [wordColor, setWordColor] = useState<string>('white');
+  const [wordColor, setWordColor] = useState<string>('inherit');
   const [path, setPath] = useState<number[]>([]);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(size * size).fill(false));
@@ -58,7 +58,7 @@ export default function SquareBoard({
     setIsRecording(true);
     setPath([index]);
     setActiveTiles(activeTiles.map((_, idx) => idx === index));
-    setWordColor('white');
+    setWordColor('inherit');
   };
 
   const handleMove = (index: number) => {

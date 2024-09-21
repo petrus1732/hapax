@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useBoards } from "../provider";
 import { useEffect, useState } from "react";
 import { fetchBoards } from "../lib/data";
 import { useRouter } from "next/navigation";
+import { string } from "zod";
+
+const timeOptions = ['∞', '90', '80', '70', '60']
 
 export default function BoardsClient() {
   const router = useRouter();
-  const { boards, setBoards } = useBoards();
+  const { boards, setBoards, time, setTime } = useBoards();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,14 +31,42 @@ export default function BoardsClient() {
 
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem('time', String(time))
+  }, [time])
+
   if (loading || !boards) return <div>Loading...</div>;
   if (error) return <div>{error}</div>;
 
   return (
-    <div className="flex flex-col items-center">
-      <h1 className={`mb-8 text-xl md:text-2xl`}>
+    <div className="flex flex-col items-center justify-between">
+      <h1 className={"mt-20 mb-8 text-xl md:text-3xl"}>
         Boards
       </h1>
+      <div className="w-72">
+        <label htmlFor="boardSize" className="mb-2 block text-sm font-medium">
+          Select time limit
+        </label>
+        <div className="relative">
+          <select
+            id="boardSize"
+            name="boardSize"
+            className="peer block w-full cursor-pointer rounded-md border border-gray-200 py-2 pl-2 text-sm outline-2 placeholder:text-gray-500 dark:bg-black"
+            defaultValue={time? time : '∞'}
+            aria-describedby="size-error"
+            onChange={e => setTime(e.target.value == '∞'? null : Number(e.target.value))}
+          >
+            <option value="" disabled>
+              Time limit
+            </option>
+            {timeOptions.map((time) => (
+              <option key={time} value={time}>
+                {time}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="mt-6 flow-root">
         <div className="relative max-w-[90vw] overflow-y-auto rounded-md bg-gray-50 dark:bg-zinc-800 md:pt-0" style={{maxHeight: 'calc(100vh - 54px - 15rem)'}}>
           <table className="min-w-full rounded-md table" >

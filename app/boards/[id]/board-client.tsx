@@ -10,7 +10,8 @@ import { findWords } from "@/app/lib/find-words";
 import { Trie } from "@/app/lib/trie";
 
 export default function BoardClient({ params }: { params: {id: string}}) {
-  const { boards } = useBoards(); 
+  const { boards, time } = useBoards(); 
+  const [timeLeft, setTimeLeft] = useState(time? time : -1);
   const [board, setBoard] = useState<Board | null>(null);
   const [openModal, setOpenModal] = useState<boolean>(false);
   const [mask, setMask] = useState<boolean>(true);
@@ -26,6 +27,26 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
     return response.json();
   };
+  const [activeTab, setActiveTab] = useState('all words');
+  const [countdown, setCountdown] = useState(3); // Start countdown from 3 seconds
+  const [veilVisible, setVeilVisible] = useState(true); // Veil visibility state
+
+  // Countdown logic
+  useEffect(() => {
+    if (time && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer); // Cleanup timer
+    } else {
+      setVeilVisible(false); // Hide veil after countdown
+    }
+  }, [countdown]);
+
+  useEffect(() => {
+    if (countdown <= 0 && time && timeLeft > 0) {
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 0.01), 10); // Decrease time every second
+      return () => clearTimeout(timer); // Cleanup timer
+    }
+  }, [timeLeft, countdown]);
 
   useEffect(() => {
     const foundBoard = boards? boards.find(b => b.id == params.id) : null;
@@ -87,11 +108,164 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
   }, [trie, board])
 
-  if (!board) return <div>Loading...</div>; 
+  if (!board) return (
+    <div role="status">
+        <svg aria-hidden="true" className="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
+            <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill"/>
+        </svg>
+        <span className="sr-only">Loading...</span>
+    </div>
+  ); 
 
   return (
     <div className="flex flex-col items-center">
-    {board && wordsLength > 0?
+    {veilVisible && (
+      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <span className="text-white text-6xl font-bold">{countdown}</span>
+      </div>
+    )}
+    {/* Time bar at the bottom */}
+    {time && timeLeft > 0 &&
+      <div className="w-full h-4 bg-gray-300 fixed bottom-0">
+        <div
+          className="h-full bg-blue-500 transition-all duration-10"
+          style={{ width: `${(timeLeft / time) * 100}%` }}
+        ></div>
+      </div>
+    }
+    {timeLeft <= 0 && 
+    <div className="w-[80vw]">
+      <div className="p-3 text-6xl text-center">
+        {Object.keys(swiped).length}/{words.flat().length}
+      </div>
+      {/* Tabs header */}
+      <ul
+        className="w-full flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:border-gray-700 dark:text-gray-400"
+        role="tablist"
+      >
+        <li className="mr-2">
+          <button
+            className={`inline-block p-1 rounded-t-lg border-b-2
+              ${activeTab === 'all words' ? 'border-blue-500 text-blue-500' : 'border-transparent'}`}
+            onClick={() => setActiveTab('all words')}
+            role="tab"
+            aria-selected={activeTab === 'all words'}
+          >
+            all words
+          </button>
+        </li>
+        <li className="mr-2">
+          <button
+            className={`inline-block p-1 rounded-t-lg border-b-2 
+              ${activeTab === 'swiped' ? 'border-blue-500 text-blue-500' : 'border-transparent'}`}
+            onClick={() => setActiveTab('swiped')}
+            role="tab"
+            aria-selected={activeTab === 'swiped'}
+          >
+            swiped
+          </button>
+        </li>
+        <li className="mr-2">
+          <button
+            className={`inline-block p-1 rounded-t-lg border-b-2 
+              ${activeTab === 'unswiped' ? 'border-blue-500 text-blue-500' : 'border-transparent'}`}
+            onClick={() => setActiveTab('unswiped')}
+            role="tab"
+            aria-selected={activeTab === 'unswiped'}
+          >
+            unswiped
+          </button>
+        </li>
+      </ul>
+
+      {/* Tabs content */}
+      <div>
+        {activeTab === 'all words' && (
+          <div id="all-words" role="tabpanel">
+            {words.map((ws, id) => (
+              id > 0 && (
+                <div key={id} className="p-2">
+                  <h3 className="text-orange-500 text-xl">{id} letters</h3>
+                  <ul className="flex flex-wrap">
+                    {ws.sort().map((w, idx) =>
+                      <li
+                        key={idx}
+                        style={{
+                          width: 272 / (272 / (id * 15) | 0) + 'px',
+                          color: swiped[w] ? 'inherit' : 'gray'
+                        }}
+                        className="flex-none"
+                      >
+                        {w}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'swiped' && (
+          <div id="swiped" role="tabpanel">
+            {words.map((ws, id) => (
+              id > 0 && (
+                <div key={id} className="p-2">
+                  <h3 className="text-orange-500 text-xl">{id} letters</h3>
+                  <ul className="flex flex-wrap">
+                    {ws
+                      .filter(w => swiped[w])
+                      .sort()
+                      .map((w, idx) => (
+                        <li
+                          key={idx}
+                          style={{
+                            width: 272 / (272 / (id * 15) | 0) + 'px',
+                          }}
+                          className="flex-none"
+                        >
+                          {w}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'unswiped' && (
+          <div id="unswiped" role="tabpanel">
+            {words.map((ws, id) => (
+              id > 0 && (
+                <div key={id} className="p-2">
+                  <h3 className="text-orange-500 text-xl">{id} letters</h3>
+                  <ul className="flex flex-wrap">
+                    {ws
+                      .filter(w => !swiped[w])
+                      .sort()
+                      .map((w, idx) => (
+                        <li
+                          key={idx}
+                          style={{
+                            width: 272 / (272 / (id * 15) | 0) + 'px',
+                          }}
+                          className="flex-none"
+                        >
+                          {w}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+    }
+    {timeLeft > 0 && board && wordsLength > 0?
       <div>
         <div onClick={() => setOpenModal(true)} className="p-3 text-6xl text-center">
           {Object.keys(swiped).length}/{words.flat().length}
@@ -113,8 +287,8 @@ export default function BoardClient({ params }: { params: {id: string}}) {
                 <h3 className="text-orange-500 text-xl">{id} letters</h3>
                 <ul className="flex flex-wrap">
                 {ws.map((w, idx) => swiped[w]? 
-                  <li key={idx} style={{width: 270.4/(270.4/(id*15) | 0) + 'px', color: 'green'}} className="flex-none">{w}</li> :
-                  <li key={idx} style={{width: 270.4/(270.4/(id*15) | 0) + 'px'}} className="flex-none">{mask? '*'.repeat(w.length) : w}</li>
+                  <li key={idx} style={{width: 272/(272/(id*15) | 0) + 'px', color: 'green'}} className="flex-none">{w}</li> :
+                  <li key={idx} style={{width: 272/(272/(id*15) | 0) + 'px'}} className="flex-none">{mask? '*'.repeat(w.length) : w}</li>
                 )}
                 </ul>
               </div>
@@ -130,8 +304,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
           validWords={words}
           minLength={2}
         ></SquareBoard>
-      </div> :
-      <div>Loading...</div>
+      </div> : <></>
     }
     </div>
   )
