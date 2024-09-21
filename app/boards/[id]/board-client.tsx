@@ -48,7 +48,20 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
   }, [timeLeft, countdown]);
 
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      e.returnValue = ''; // Standard way to trigger the confirmation dialog.
+    };
   
+    window.addEventListener('beforeunload', handleBeforeUnload);
+  
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   useEffect(() => {
     const foundBoard = boards? boards.find(b => b.id == params.id) : null;
