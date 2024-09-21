@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction } from "react";
+import { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction, useEffect } from "react";
 import { ThemeProvider } from "next-themes";
 import { SessionProvider } from "next-auth/react";
 import { Board } from "./lib/definitions";
@@ -13,7 +13,7 @@ type BoardContextType = {
 
 const BoardContext = createContext<BoardContextType>({
   boards: null,
-  setBoards: () => {}, // A no-op function as a default placeholder
+  setBoards: () => {}, 
   time: null,
   setTime: () => {}
 });
@@ -24,8 +24,17 @@ export function useBoards() {
 
 export function Providers({ children } : { children: ReactNode}) {
   const [boards, setBoards] = useState<Board[] | null>(null);
-  const [time, setTime] = useState<number | null>(localStorage.getItem('time')? Number(localStorage.getItem('time')):null);
-  
+  const [time, setTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') { 
+      const storedTime = localStorage.getItem('time');
+      if (storedTime) {
+        setTime(Number(storedTime));
+      }
+    }
+  }, []);
+
   return (
     <SessionProvider>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -33,6 +42,6 @@ export function Providers({ children } : { children: ReactNode}) {
           {children}
         </BoardContext.Provider>
       </ThemeProvider>
-    </SessionProvider> 
-  )
+    </SessionProvider>
+  );
 }
