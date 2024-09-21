@@ -32,7 +32,8 @@ export default function BoardsClient() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('time', String(time))
+    if (time) localStorage.setItem('time', String(time));
+    else localStorage.removeItem('time');
   }, [time])
 
   if (loading || !boards) return <div>Loading...</div>;

@@ -11,7 +11,7 @@ import { Trie } from "@/app/lib/trie";
 
 export default function BoardClient({ params }: { params: {id: string}}) {
   const { boards, time } = useBoards(); 
-  const [timeLeft, setTimeLeft] = useState(time? time : -1);
+  const [timeLeft, setTimeLeft] = useState(time? time : 100);
   const [board, setBoard] = useState<Board | null>(null);
   const [openModal, setOpenModal] = useState<boolean>(false);
   const [mask, setMask] = useState<boolean>(true);
@@ -47,6 +47,8 @@ export default function BoardClient({ params }: { params: {id: string}}) {
       return () => clearTimeout(timer); // Cleanup timer
     }
   }, [timeLeft, countdown]);
+
+  
 
   useEffect(() => {
     const foundBoard = boards? boards.find(b => b.id == params.id) : null;
