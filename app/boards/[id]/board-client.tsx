@@ -51,8 +51,6 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
       e.returnValue = ''; // Standard way to trigger the confirmation dialog.
     };
   
