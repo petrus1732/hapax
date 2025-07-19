@@ -20,6 +20,17 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   const [wordsLength, setWordsLength] = useState<number>(0);
   const [swiped, setSwiped] = useState<Record<string, boolean>>({});
   const [trie, setTrie] = useState<Trie | null>(null);
+  const subtheme = board?.subtheme;
+  console.log(subtheme)
+  const allWordsFlat = words.flat();
+
+  const allSubthemeWords = subtheme
+    ? allWordsFlat.filter(w => w.includes(subtheme))
+    : [];
+
+  const swipedSubthemeWords = allSubthemeWords.filter(w => swiped[w]);
+
+
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');
     if (!response.ok) {
@@ -145,8 +156,14 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     {timeLeft <= 0 && 
     <div className="w-[80vw]">
       <div className="p-3 text-6xl text-center">
-        {Object.keys(swiped).length}/{words.flat().length}
+        {Object.keys(swiped).length}/{allWordsFlat.length}
+        {subtheme && (
+          <div className="text-2xl text-green-600 mt-2">
+            "{subtheme}": {swipedSubthemeWords.length}/{allSubthemeWords.length}
+          </div>
+        )}
       </div>
+
       {/* Tabs header */}
       <ul
         className="w-full flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:border-gray-700 dark:text-gray-400"
@@ -275,14 +292,19 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
     {timeLeft > 0 && board && wordsLength > 0?
       <div>
-        <div onClick={() => setOpenModal(true)} className="p-3 text-6xl text-center">
-          {Object.keys(swiped).length}/{words.flat().length}
+        <div className="p-3 text-6xl text-center">
+          {Object.keys(swiped).length}/{allWordsFlat.length}
+          {subtheme && (
+            <div className="text-2xl text-green-600 mt-2">
+              "{subtheme}": {swipedSubthemeWords.length}/{allSubthemeWords.length}
+            </div>
+          )}
         </div>
-        <Modal 
-        className="translate-y-14 h-[calc(100vh-54px)]" 
-        style={{maxWidth: '768px', margin: 'auto'}}
-        show={openModal} 
-        onClose={() => setOpenModal(false)}>
+        <Modal
+          className="translate-y-14 h-[calc(100vh-54px)]"
+          style={{ maxWidth: '768px', margin: 'auto' }}
+          show={openModal}
+          onClose={() => setOpenModal(false)}>
           <Modal.Header className="bg-white dark:bg-black p-2">Words</Modal.Header>
           <Modal.Body className="bg-white dark:bg-black overflow-y-auto" style={{ maxHeight: 'calc(100vh - 54px - 9rem)' }}>
             <div className="m-2">
