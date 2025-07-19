@@ -292,7 +292,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
     }
     {timeLeft > 0 && board && wordsLength > 0?
       <div>
-        <div className="p-3 text-6xl text-center">
+        <div onClick={() => setOpenModal(true)} className="p-3 text-6xl text-center">
           {Object.keys(swiped).length}/{allWordsFlat.length}
           {subtheme && (
             <div className="text-2xl text-green-600 mt-2">
