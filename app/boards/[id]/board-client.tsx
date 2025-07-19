@@ -104,13 +104,8 @@ export default function BoardClient({ params }: { params: {id: string}}) {
   useEffect(() => {
     if (board && trie) {
       const { size, letters } = board;
-      
-      const boardArray: string[][] = [];
-      for (let i = 0; i < size; i++) {
-        const row = letters.slice(i * size, (i + 1) * size).split('');
-        boardArray.push(row);
-      }
-      const ws = findWords(boardArray, trie).sort((a, b) => a.length === b.length? (a < b? -1 : 1) : (a.length - b.length));
+  
+      const ws = findWords(size, letters, trie)[0].sort((a, b) => a.length === b.length? (a < b? -1 : 1) : (a.length - b.length));
       const validWords: string[][] = [];
       ws.forEach(w => {
         if (!validWords[w.length]) validWords[w.length] = [];
