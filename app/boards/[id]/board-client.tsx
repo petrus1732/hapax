@@ -159,7 +159,7 @@ export default function BoardClient({ params }: { params: {id: string}}) {
         {Object.keys(swiped).length}/{allWordsFlat.length}
         {subtheme && (
           <div className="text-2xl text-green-600 mt-2">
-            "{subtheme}": {swipedSubthemeWords.length}/{allSubthemeWords.length}
+            {subtheme}-words: {swipedSubthemeWords.length}/{allSubthemeWords.length}
           </div>
         )}
       </div>
