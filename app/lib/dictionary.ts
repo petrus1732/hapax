@@ -9,7 +9,7 @@ let wordsCache: string[] | null = null;
 function loadDictionary() {
     if (dictionaryCache) return { dictionary: dictionaryCache, words: wordsCache! };
 
-    const filePath = path.join(process.cwd(), 'public/dictionary.json');
+    const filePath = path.join(process.cwd(), 'app/lib/dictionary.json');
     if (!fs.existsSync(filePath)) {
         throw new Error('Dictionary data not found. Please run preprocessing first.');
     }

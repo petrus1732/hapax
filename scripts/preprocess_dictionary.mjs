@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const inputFile = 'public/Collins Scrabble Words (2019) with definitions.txt';
-const outputFile = 'public/dictionary.json';
+const outputFile = 'app/lib/dictionary.json';
 
 async function preprocess() {
     console.log('Reading dictionary file...');
