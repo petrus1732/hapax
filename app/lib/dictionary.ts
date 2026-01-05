@@ -7,18 +7,28 @@ let dictionaryCache: Record<string, string> | null = null;
 let wordsCache: string[] | null = null;
 
 function loadDictionary() {
-    if (dictionaryCache) return { dictionary: dictionaryCache, words: wordsCache! };
+    try {
+        if (dictionaryCache) return { dictionary: dictionaryCache, words: wordsCache! };
 
-    const filePath = path.join(process.cwd(), 'app/lib/dictionary.json');
-    if (!fs.existsSync(filePath)) {
-        throw new Error('Dictionary data not found. Please run preprocessing first.');
+        console.log('Loading dictionary from file...');
+        const filePath = path.resolve(process.cwd(), 'app/lib/dictionary.json');
+        console.log('Expected file path:', filePath);
+
+        if (!fs.existsSync(filePath)) {
+            console.error('Dictionary file not found at:', filePath);
+            throw new Error(`Dictionary data not found at ${filePath}. Please ensure it is bundled correctly.`);
+        }
+
+        const content = fs.readFileSync(filePath, 'utf-8');
+        dictionaryCache = JSON.parse(content);
+        wordsCache = Object.keys(dictionaryCache!).sort();
+        console.log(`Dictionary loaded successfully. Total words: ${wordsCache.length}`);
+
+        return { dictionary: dictionaryCache!, words: wordsCache! };
+    } catch (error) {
+        console.error('Error loading dictionary:', error);
+        throw error;
     }
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    dictionaryCache = JSON.parse(content);
-    wordsCache = Object.keys(dictionaryCache!).sort();
-
-    return { dictionary: dictionaryCache!, words: wordsCache! };
 }
 
 export async function getDefinition(word: string): Promise<string | null> {
