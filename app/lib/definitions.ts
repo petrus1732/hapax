@@ -12,4 +12,6 @@ export type Board = {
   size: number;
   letters: string;
   date: string;
-}
+  theme?: string;
+  subtheme?: string;
+};
