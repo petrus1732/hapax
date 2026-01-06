@@ -495,6 +495,7 @@ export default function BoardClient({ params }: { params: { id: string } }) {
             setSwiped={setSwiped}
             validWords={words}
             minLength={2}
+            onWordClick={handleWordClick}
           ></SquareBoard>
         </div> : <></>
       }

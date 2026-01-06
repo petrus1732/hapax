@@ -10,6 +10,7 @@ interface SquareBoardProps {
   setSwiped: Dispatch<SetStateAction<Record<string, boolean>>>;
   validWords: string[][];
   minLength: number;
+  onWordClick?: (word: string) => void;
 }
 
 export default function SquareBoard({
@@ -19,6 +20,7 @@ export default function SquareBoard({
   setSwiped,
   validWords,
   minLength,
+  onWordClick,
 }: SquareBoardProps) {
   const boardSize: number = 288;
   const fontSize: number = (boardSize / size) * 0.5;
@@ -27,10 +29,6 @@ export default function SquareBoard({
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(size * size).fill(false));
   const pathRef = useRef<number[]>(path); // Use a ref to keep track of the current path
-
-  useEffect(() => {
-    pathRef.current = path;
-  }, [path]);
 
   useEffect(() => {
     const handleWindowMouseUp = () => {
@@ -56,24 +54,29 @@ export default function SquareBoard({
 
   const handleStart = (index: number) => {
     setIsRecording(true);
-    setPath([index]);
+    const newPath = [index];
+    setPath(newPath);
+    pathRef.current = newPath;
     setActiveTiles(activeTiles.map((_, idx) => idx === index));
     setWordColor('inherit');
   };
 
   const handleMove = (index: number) => {
     if (isRecording) {
-      const lastId = path.at(-1);
+      const currentPath = pathRef.current;
+      const lastId = currentPath.at(-1);
 
-      if (path.length >= 2 && path.at(-2) === index) {
-        setPath((path) => path.slice(0, -1));
+      if (currentPath.length >= 2 && currentPath.at(-2) === index) {
+        const nextPath = currentPath.slice(0, -1);
+        setPath(nextPath);
+        pathRef.current = nextPath;
         setActiveTiles(activeTiles.map((active, idx) => (idx === lastId ? false : active)));
-      } else if (lastId != undefined && isAdjacent(lastId, index)) {
-        const pathLength = path.length;
-        for (let i = 0; i < pathLength; i++) {
-          if (path[i] === index) return;
-        }
-        setPath((path) => [...path, index]);
+      } else if (lastId !== undefined && isAdjacent(lastId, index)) {
+        if (currentPath.includes(index)) return;
+
+        const nextPath = [...currentPath, index];
+        setPath(nextPath);
+        pathRef.current = nextPath;
         setActiveTiles(activeTiles.map((active, idx) => active || idx === index));
       }
     }
@@ -103,10 +106,24 @@ export default function SquareBoard({
     }
   };
 
+  const currentWord = path.map((id) => letters[id]).join('');
+  const isClickable = wordColor === 'green' || wordColor === 'yellow';
+
   return (
     <div>
-      <div style={{ color: wordColor }} className="text-center h-8 text-xl">
-        {path.map((id) => letters[id]).join('')}
+      <div className="flex justify-center items-center h-10 mb-2">
+        <div
+          style={{
+            color: wordColor,
+            borderColor: isClickable ? wordColor : 'transparent',
+            visibility: currentWord ? 'visible' : 'hidden'
+          }}
+          className={`px-3 py-0 rounded-full text-xl border-2 transition-all font-bold flex items-center justify-center ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 shadow-sm' : 'border-transparent'
+            }`}
+          onClick={() => isClickable && onWordClick?.(currentWord)}
+        >
+          {currentWord || ' '}
+        </div>
       </div>
       <div
         style={{
