@@ -1,7 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef, Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import Tile from './tile';
+import { BonusOrNull, isAdjacent, letterPoints } from '@/app/lib/wordblitz';
+
+export type SubmittedTerm = {
+  word: string;
+  path: number[];
+  isDictionaryWord: boolean;
+  isAlreadyFound: boolean;
+};
+
+export type SubmitResult = {
+  accepted: boolean;
+  color?: string;
+  keepPath?: boolean;
+};
 
 interface SquareBoardProps {
   size: number;
@@ -11,6 +25,12 @@ interface SquareBoardProps {
   validWords: string[][];
   minLength: number;
   onWordClick?: (word: string) => void;
+  onSubmitTerm?: (term: SubmittedTerm) => SubmitResult;
+  bonuses?: BonusOrNull[];
+  showTileScores?: boolean;
+  evolutionLevels?: number[];
+  highlightedRoute?: number[];
+  disabled?: boolean;
 }
 
 export default function SquareBoard({
@@ -21,14 +41,20 @@ export default function SquareBoard({
   validWords,
   minLength,
   onWordClick,
+  onSubmitTerm,
+  bonuses = [],
+  showTileScores = false,
+  evolutionLevels = [],
+  highlightedRoute = [],
+  disabled = false,
 }: SquareBoardProps) {
-  const boardSize: number = 288;
-  const fontSize: number = (boardSize / size) * 0.5;
+  const boardSize = 288;
+  const fontSize = (boardSize / size) * 0.5;
   const [wordColor, setWordColor] = useState<string>('inherit');
   const [path, setPath] = useState<number[]>([]);
-  const [isRecording, setIsRecording] = useState<boolean>(false);
   const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(size * size).fill(false));
-  const pathRef = useRef<number[]>(path); // Use a ref to keep track of the current path
+  const pathRef = useRef<number[]>(path);
+  const isRecordingRef = useRef(false);
 
   useEffect(() => {
     const handleWindowMouseUp = () => {
@@ -42,18 +68,18 @@ export default function SquareBoard({
       window.removeEventListener('mouseup', handleWindowMouseUp);
       window.removeEventListener('touchend', handleWindowMouseUp);
     };
-  }, [isRecording]);
+  });
 
-  const isAdjacent = (id1: number, id2: number) => {
-    const r1 = (id1 / size) | 0,
-      c1 = id1 % size,
-      r2 = (id2 / size) | 0,
-      c2 = id2 % size;
-    return Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1;
-  };
+  useEffect(() => {
+    if (disabled) {
+      isRecordingRef.current = false;
+      setActiveTiles(Array(size * size).fill(false));
+    }
+  }, [disabled, size]);
 
   const handleStart = (index: number) => {
-    setIsRecording(true);
+    if (disabled) return;
+    isRecordingRef.current = true;
     const newPath = [index];
     setPath(newPath);
     pathRef.current = newPath;
@@ -62,64 +88,72 @@ export default function SquareBoard({
   };
 
   const handleMove = (index: number) => {
-    if (isRecording) {
-      const currentPath = pathRef.current;
-      const lastId = currentPath.at(-1);
+    if (!isRecordingRef.current || disabled) return;
 
-      if (currentPath.length >= 2 && currentPath.at(-2) === index) {
-        const nextPath = currentPath.slice(0, -1);
-        setPath(nextPath);
-        pathRef.current = nextPath;
-        setActiveTiles(activeTiles.map((active, idx) => (idx === lastId ? false : active)));
-      } else if (lastId !== undefined && isAdjacent(lastId, index)) {
-        if (currentPath.includes(index)) return;
+    const currentPath = pathRef.current;
+    const lastId = currentPath.at(-1);
 
-        const nextPath = [...currentPath, index];
-        setPath(nextPath);
-        pathRef.current = nextPath;
-        setActiveTiles(activeTiles.map((active, idx) => active || idx === index));
-      }
+    if (currentPath.length >= 2 && currentPath.at(-2) === index) {
+      const nextPath = currentPath.slice(0, -1);
+      setPath(nextPath);
+      pathRef.current = nextPath;
+      setActiveTiles(activeTiles.map((active, idx) => (idx === lastId ? false : active)));
+    } else if (lastId !== undefined && isAdjacent(lastId, index, size)) {
+      if (currentPath.includes(index)) return;
+
+      const nextPath = [...currentPath, index];
+      setPath(nextPath);
+      pathRef.current = nextPath;
+      setActiveTiles(activeTiles.map((active, idx) => active || idx === index));
     }
   };
 
   const handleMouseUp = () => {
-    if (isRecording) {
-      setIsRecording(false);
-      const currentPath = pathRef.current; // Get the most up-to-date path
+    if (!isRecordingRef.current) return;
 
-      // Check the validity of the word
-      if (currentPath.length >= minLength) {
-        const word = currentPath.map((i) => letters[i]).join('');
-        console.log(validWords[word.length])
-        if (validWords[word.length]?.includes(word)) {
-          if (swiped[word]) setWordColor('yellow');
-          else {
-            setSwiped((arr) => ({
-              ...arr,
-              [word]: true,
-            }));
-            setWordColor('green');
-          }
-        } else setWordColor('red');
+    isRecordingRef.current = false;
+    const currentPath = pathRef.current;
+
+    if (currentPath.length >= minLength) {
+      const word = currentPath.map((index) => letters[index]).join('');
+      const isDictionaryWord = !!validWords[word.length]?.includes(word);
+      const isAlreadyFound = !!swiped[word];
+
+      if (onSubmitTerm) {
+        const result = onSubmitTerm({ word, path: currentPath, isDictionaryWord, isAlreadyFound });
+        setWordColor(result.color ?? (result.accepted ? 'green' : isDictionaryWord ? 'yellow' : 'red'));
+      } else if (isDictionaryWord) {
+        if (isAlreadyFound) setWordColor('yellow');
+        else {
+          setSwiped((arr) => ({ ...arr, [word]: true }));
+          setWordColor('green');
+        }
+      } else {
+        setWordColor('red');
       }
-      setActiveTiles(Array(size * size).fill(false));
     }
+
+    setActiveTiles(Array(size * size).fill(false));
   };
 
   const currentWord = path.map((id) => letters[id]).join('');
   const isClickable = wordColor === 'green' || wordColor === 'yellow';
+  const highlighted = new Set(highlightedRoute);
 
   return (
     <div>
-      <div className="flex justify-center items-center h-10 mb-2">
+      <div className="mb-2 flex h-10 items-center justify-center">
         <div
           style={{
             color: wordColor,
             borderColor: isClickable ? wordColor : 'transparent',
-            visibility: currentWord ? 'visible' : 'hidden'
+            visibility: currentWord ? 'visible' : 'hidden',
           }}
-          className={`px-3 py-0 rounded-full text-xl border-2 transition-all font-bold flex items-center justify-center ${isClickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 shadow-sm' : 'border-transparent'
-            }`}
+          className={`flex items-center justify-center rounded-full border-2 px-3 py-0 text-xl font-bold transition-all ${
+            isClickable
+              ? 'cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-800'
+              : 'border-transparent'
+          }`}
           onClick={() => isClickable && onWordClick?.(currentWord)}
         >
           {currentWord || ' '}
@@ -131,7 +165,7 @@ export default function SquareBoard({
           height: `${boardSize}px`,
           gridTemplateColumns: `repeat(${size}, 1fr)`,
         }}
-        className="grid gap-3 mx-auto"
+        className="mx-auto grid gap-3"
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
       >
@@ -146,6 +180,12 @@ export default function SquareBoard({
               onStart={handleStart}
               onMove={handleMove}
               isActive={activeTiles[id]}
+              isRouteHighlighted={highlighted.has(id)}
+              bonus={bonuses[id] ?? null}
+              points={letterPoints(letters[id])}
+              showPoints={showTileScores}
+              evolutionLevel={evolutionLevels[id] ?? 0}
+              disabled={disabled}
             />
           ))}
       </div>

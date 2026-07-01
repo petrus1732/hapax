@@ -1,33 +1,21 @@
 'use client';
 
-import {
-  AtSymbolIcon,
-  KeyIcon,
-  ExclamationCircleIcon,
-} from '@heroicons/react/24/outline';
+import { AtSymbolIcon, KeyIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { ArrowRightIcon } from '@heroicons/react/20/solid';
 import { Button } from './button';
 import { useFormState } from 'react-dom';
 import { authenticate } from '@/app/lib/actions';
 
 export default function LoginForm() {
-  const [errorMessage, formAction, isPending] = useFormState(
-    authenticate,
-    undefined,
-  );
+  const [errorMessage, formAction, isPending] = useFormState(authenticate, undefined);
 
   return (
     <form action={formAction} className="space-y-3">
       <div className="flex-1 rounded-lg bg-gray-50 px-6 pb-4 pt-8 dark:bg-zinc-800">
-        <h1 className={`mb-3 text-2xl text-center light:text-black`}>
-          Login
-        </h1>
+        <h1 className={`mb-3 text-2xl text-center light:text-black`}>Login</h1>
         <div className="w-full">
           <div>
-            <label
-              className="mb-3 mt-5 block text-xs font-medium light:text-gray-900"
-              htmlFor="email"
-            >
+            <label className="mb-3 mt-5 block text-xs font-medium light:text-gray-900" htmlFor="email">
               Email
             </label>
             <div className="relative">
@@ -43,10 +31,7 @@ export default function LoginForm() {
             </div>
           </div>
           <div className="mt-4">
-            <label
-              className="mb-3 mt-5 block text-xs font-medium light:text-gray-900"
-              htmlFor="password"
-            >
+            <label className="mb-3 mt-5 block text-xs font-medium light:text-gray-900" htmlFor="password">
               Password
             </label>
             <div className="relative">

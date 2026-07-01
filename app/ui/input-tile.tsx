@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 interface TileProps {
   id: number;
@@ -14,7 +14,6 @@ export default function InputTile({ id, fontSize }: TileProps): JSX.Element {
       className="uppercase select-none bg-white text-black rounded-md w-full h-full text-center leading-none"
       maxLength={1}
       autoComplete="off"
-    >
-    </input>
+    ></input>
   );
 }
