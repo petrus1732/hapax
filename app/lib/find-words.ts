@@ -17,8 +17,14 @@ export function findWords(size: number, letters: string, trie: Trie): [string[],
   const used: boolean[][] = Array.from({ length: rows }, () => Array(cols).fill(false));
 
   const directions = [
-    [0, 1], [1, 0], [0, -1], [-1, 0],
-    [1, 1], [-1, -1], [1, -1], [-1, 1]
+    [0, 1],
+    [1, 0],
+    [0, -1],
+    [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
   ];
 
   function backtrack(row: number, col: number, path: string, node: TrieNode) {
@@ -54,6 +60,6 @@ export function findWords(size: number, letters: string, trie: Trie): [string[],
     }
   }
 
-  const allUsed = used.flat().every(v => v);
+  const allUsed = used.flat().every((v) => v);
   return [result, allUsed];
 }
