@@ -25,6 +25,7 @@ import {
   generateBonuses,
   generateTrainingBoard,
   groupWordsByLength,
+  isWordCountableInMode,
   randomBoardLetters,
 } from '@/app/lib/wordblitz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -118,6 +119,12 @@ function formatTime(value: number): string {
   return value.toFixed(1);
 }
 
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+}
+
 export default function RandomBoardClient() {
   const [mode, setMode] = useState<PracticeMode>('practice');
   const [arenaMode, setArenaMode] = useState<ArenaSubmode>('arena-gladiator');
@@ -140,6 +147,7 @@ export default function RandomBoardClient() {
   const [roundPhase, setRoundPhase] = useState<RoundPhase>('idle');
   const [countdown, setCountdown] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [isRollingBoard, setIsRollingBoard] = useState(false);
   const [openWordList, setOpenWordList] = useState(false);
   const [mask, setMask] = useState(true);
   const [statusMessage, setStatusMessage] = useState('Choose a mode, then start a board.');
@@ -277,51 +285,80 @@ export default function RandomBoardClient() {
     setSelectedRouteInfo('');
   }, []);
 
-  const startNewBoard = useCallback(() => {
-    if (!trie) return;
+  const startNewBoard = useCallback(async () => {
+    if (!trie || isRollingBoard) return;
 
+    setIsRollingBoard(true);
     resetRoundState();
-    setRoundPhase('countdown');
-    setCountdown(3);
+    setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setStatusMessage('Rolling a board where every tile has a valid route...');
 
     const generateCandidateLetters = () =>
       activeMode === 'training' ? generateTrainingBoard(wordlist, trainingLetter) : randomBoardLetters();
 
     const scoreCandidate = (letters: string) => {
-      const found = findWords(BOARD_SIZE, letters, trie)[0].filter((word) => word.length >= 2);
-      return { found, count: found.length };
+      const [rawFound, allTilesCovered] = findWords(BOARD_SIZE, letters, trie, {
+        minCoverageLength: 2,
+        countWordForCoverage: (word) => isWordCountableInMode(word, activeMode),
+      });
+      const found = rawFound.filter((word) => word.length >= 2);
+      return { found, count: found.length, allTilesCovered };
     };
+
+    const isAcceptableCandidate = (result: ReturnType<typeof scoreCandidate>) =>
+      result.count >= MIN_PLAYABLE_WORDS && result.allTilesCovered;
+
+    const isBetterCandidate = (
+      candidate: ReturnType<typeof scoreCandidate>,
+      current: ReturnType<typeof scoreCandidate>,
+    ) =>
+      candidate.allTilesCovered !== current.allTilesCovered
+        ? candidate.allTilesCovered
+        : candidate.count > current.count;
 
     let letters = generateCandidateLetters();
     let bestResult = scoreCandidate(letters);
-    let metMinimum = bestResult.count >= MIN_PLAYABLE_WORDS;
+    let metMinimum = isAcceptableCandidate(bestResult);
     let attemptsUsed = 1;
 
-    for (let attempt = 2; attempt <= MAX_BOARD_ROLL_ATTEMPTS && !metMinimum; attempt += 1) {
-      attemptsUsed = attempt;
-      const candidateLetters = generateCandidateLetters();
-      const result = scoreCandidate(candidateLetters);
+    while (!metMinimum) {
+      for (let attempt = 0; attempt < MAX_BOARD_ROLL_ATTEMPTS && !metMinimum; attempt += 1) {
+        attemptsUsed += 1;
+        const candidateLetters = generateCandidateLetters();
+        const result = scoreCandidate(candidateLetters);
 
-      if (result.count > bestResult.count) {
-        letters = candidateLetters;
-        bestResult = result;
+        if (isBetterCandidate(result, bestResult)) {
+          letters = candidateLetters;
+          bestResult = result;
+        }
+
+        if (isAcceptableCandidate(result)) {
+          letters = candidateLetters;
+          bestResult = result;
+          metMinimum = true;
+        }
       }
 
-      if (result.count >= MIN_PLAYABLE_WORDS) {
-        letters = candidateLetters;
-        bestResult = result;
-        metMinimum = true;
+      if (!metMinimum) {
+        const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
+        const fallbackResult = scoreCandidate(fallbackLetters);
+        if (isBetterCandidate(fallbackResult, bestResult)) {
+          letters = fallbackLetters;
+          bestResult = fallbackResult;
+        }
+        metMinimum = isAcceptableCandidate(bestResult);
       }
-    }
 
-    if (!metMinimum) {
-      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
-      const fallbackResult = scoreCandidate(fallbackLetters);
-      if (fallbackResult.count >= bestResult.count) {
-        letters = fallbackLetters;
-        bestResult = fallbackResult;
+      if (!metMinimum) {
+        setStatusMessage(
+          `Still rolling... best so far has ${bestResult.count} board words${
+            bestResult.allTilesCovered ? ' and full tile coverage' : ''
+          } after ${attemptsUsed} rerolls.`,
+        );
+        await waitForNextFrame();
       }
-      metMinimum = bestResult.count >= MIN_PLAYABLE_WORDS;
     }
 
     const sortedAllWords = bestResult.found.sort((a, b) =>
@@ -348,12 +385,20 @@ export default function RandomBoardClient() {
     setWords(groupWordsByLength(sortedCountableWords));
     setBonuses(nextBonuses);
     setTimeLeft(roundDuration);
-    setStatusMessage(
-      metMinimum
-        ? `Board ready with ${sortedAllWords.length} board words. Countdown starts now.`
-        : `Best board found has ${sortedAllWords.length} board words after ${attemptsUsed} rerolls.`,
-    );
-  }, [activeMode, effectiveRound, resetRoundState, roundDuration, trainingLetter, trie, wordlist]);
+    setRoundPhase('countdown');
+    setCountdown(3);
+    setStatusMessage(`Board ready with ${sortedAllWords.length} board words. Countdown starts now.`);
+    setIsRollingBoard(false);
+  }, [
+    activeMode,
+    effectiveRound,
+    isRollingBoard,
+    resetRoundState,
+    roundDuration,
+    trainingLetter,
+    trie,
+    wordlist,
+  ]);
 
   const addFoundWord = useCallback((entry: FoundWord) => {
     setFoundWords((current) => ({ ...current, [entry.word]: entry }));
@@ -668,13 +713,15 @@ export default function RandomBoardClient() {
             <button
               className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow hover:bg-blue-700"
               onClick={startNewBoard}
-              disabled={!trie}
+              disabled={!trie || isRollingBoard}
             >
-              {trie
-                ? roundPhase === 'idle'
-                  ? 'Start board'
-                  : 'Start / reroll board'
-                : 'Loading dictionary...'}
+              {isRollingBoard
+                ? 'Rolling...'
+                : trie
+                  ? roundPhase === 'idle'
+                    ? 'Start board'
+                    : 'Start / reroll board'
+                  : 'Loading dictionary...'}
             </button>
             <div className="text-sm text-gray-600 dark:text-gray-300">{statusMessage}</div>
           </div>
@@ -716,9 +763,9 @@ export default function RandomBoardClient() {
                 <button
                   className="rounded-full bg-blue-600 px-3 py-1 font-bold text-white hover:bg-blue-700"
                   onClick={startNewBoard}
-                  disabled={!trie}
+                  disabled={!trie || isRollingBoard}
                 >
-                  Reroll
+                  {isRollingBoard ? 'Rolling...' : 'Reroll'}
                 </button>
                 <button
                   className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"

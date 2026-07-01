@@ -2,7 +2,17 @@ import { Trie, TrieNode } from './trie';
 
 type Board = string[][];
 
-export function findWords(size: number, letters: string, trie: Trie): [string[], boolean] {
+type FindWordsOptions = {
+  minCoverageLength?: number;
+  countWordForCoverage?: (word: string) => boolean;
+};
+
+export function findWords(
+  size: number,
+  letters: string,
+  trie: Trie,
+  options: FindWordsOptions = {},
+): [string[], boolean] {
   const board: Board = [];
   for (let i = 0; i < size; i++) {
     const row = letters.slice(i * size, (i + 1) * size).split('');
@@ -15,6 +25,7 @@ export function findWords(size: number, letters: string, trie: Trie): [string[],
   const cols = board[0].length;
   const visited: boolean[][] = Array.from({ length: rows }, () => Array(cols).fill(false));
   const used: boolean[][] = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const minCoverageLength = options.minCoverageLength ?? 1;
 
   const directions = [
     [0, 1],
@@ -37,12 +48,20 @@ export function findWords(size: number, letters: string, trie: Trie): [string[],
     path += char;
     node = node.children.get(char)!;
 
-    if (node.isEndOfWord && !found.has(path)) {
-      result.push(path);
-      found.add(path);
-      for (let i = 0; i < rows; i++) {
-        for (let j = 0; j < cols; j++) {
-          if (visited[i][j]) used[i][j] = true;
+    if (node.isEndOfWord) {
+      if (!found.has(path)) {
+        result.push(path);
+        found.add(path);
+      }
+
+      if (
+        path.length >= minCoverageLength &&
+        (!options.countWordForCoverage || options.countWordForCoverage(path))
+      ) {
+        for (let i = 0; i < rows; i++) {
+          for (let j = 0; j < cols; j++) {
+            if (visited[i][j]) used[i][j] = true;
+          }
         }
       }
     }
