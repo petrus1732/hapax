@@ -4,11 +4,7 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
+  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb)))
     rgb(var(--background-start-rgb));
 }
 
@@ -16,4 +12,128 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+.wb-tile {
+  background: #f8fafc;
+  color: #111827;
+  border: 3px solid #d1d5db;
+  touch-action: none;
+}
+
+.wb-tile-active {
+  background: #050505 !important;
+  color: #ffffff !important;
+  border-color: #111827 !important;
+  transform: scale(0.98);
+}
+
+.wb-tile-route {
+  box-shadow:
+    0 0 0 4px rgba(34, 197, 94, 0.45),
+    0 8px 20px rgba(22, 163, 74, 0.25);
+  transform: translateY(-2px);
+}
+
+.wb-tile-2w {
+  border-color: #fb7185;
+  box-shadow: inset 0 0 0 1px #f43f5e;
+}
+
+.wb-tile-3w {
+  border-color: #facc15;
+  box-shadow: inset 0 0 0 1px #eab308;
+}
+
+.wb-tile-4w {
+  background: #bbf7d0;
+  border-color: #22c55e;
+}
+
+.wb-tile-2l {
+  border-color: #7dd3fc;
+  box-shadow: inset 0 0 0 1px #38bdf8;
+}
+
+.wb-tile-3l {
+  border-color: #c084fc;
+  box-shadow: inset 0 0 0 1px #a855f7;
+}
+
+.wb-tile-4l {
+  background: #bfdbfe;
+  border-color: #60a5fa;
+}
+
+.wb-tile-evolution-max {
+  background: #ddd6fe;
+  border-color: #a78bfa;
+}
+
+.wb-bonus-dot {
+  position: absolute;
+  left: -0.65rem;
+  top: -0.65rem;
+  z-index: 1;
+  display: flex;
+  height: 1.55rem;
+  min-width: 1.55rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 0 0.25rem;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+}
+
+.wb-bonus-dw {
+  background: #f43f5e;
+}
+
+.wb-bonus-tw {
+  background: #eab308;
+}
+
+.wb-bonus-qw {
+  background: #16a34a;
+}
+
+.wb-bonus-dl {
+  background: #38bdf8;
+}
+
+.wb-bonus-tl {
+  background: #a855f7;
+}
+
+.wb-bonus-ql {
+  background: #3b82f6;
+}
+
+.wb-tile-points {
+  position: absolute;
+  right: 0.35rem;
+  top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.wb-evolution-level {
+  position: absolute;
+  bottom: 0.25rem;
+  right: 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.wb-tile-letter {
+  pointer-events: none;
+  line-height: 1;
+  font-weight: 800;
 }

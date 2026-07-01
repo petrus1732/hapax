@@ -1,9 +1,9 @@
-import { Trie } from "./app/lib/trie";
-import { findWords } from "./app/lib/find-words";
-import dotenv from "dotenv";
+import { Trie } from './app/lib/trie';
+import { findWords } from './app/lib/find-words';
+import dotenv from 'dotenv';
 import { sql } from '@vercel/postgres';
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: '.env.local' });
 
 async function createBoard(boardName: string, letters: string) {
   const date = new Date().toISOString().split('T')[0];
@@ -29,33 +29,54 @@ async function createBoard(boardName: string, letters: string) {
   }
 }
 
-
-
 const letterScore: Record<string, number> = {
-  A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4,
-  I: 1, J: 8, K: 5, L: 1, M: 3, N: 1, O: 1, P: 3,
-  Q: 10, R: 1, S: 1, T: 1, U: 1, V: 4, W: 4, X: 10,
-  Y: 4, Z: 10
+  A: 1,
+  B: 3,
+  C: 3,
+  D: 2,
+  E: 1,
+  F: 4,
+  G: 2,
+  H: 4,
+  I: 1,
+  J: 8,
+  K: 5,
+  L: 1,
+  M: 3,
+  N: 1,
+  O: 1,
+  P: 3,
+  Q: 10,
+  R: 1,
+  S: 1,
+  T: 1,
+  U: 1,
+  V: 4,
+  W: 4,
+  X: 10,
+  Y: 4,
+  Z: 10,
 };
 
 const letters = Object.keys(letterScore);
-const weights = letters.map(l => 1 / letterScore[l]);
+const weights = letters.map((l) => 1 / letterScore[l]);
 const totalWeight = weights.reduce((a, b) => a + b, 0);
-const probabilities = weights.map(w => w / totalWeight);
-
+const probabilities = weights.map((w) => w / totalWeight);
 
 const baseUrl = 'http://localhost:3000';
 const getWordlist = async () => {
-    const response = await fetch(`${baseUrl}/api/wordlist`);
-    if (!response.ok) {
-        throw new Error('Failed to get wordlist');
-    }
-    return response.json();
+  const response = await fetch(`${baseUrl}/api/wordlist`);
+  if (!response.ok) {
+    throw new Error('Failed to get wordlist');
+  }
+  return response.json();
 };
 let wordlist: string[] = [];
 getWordlist().then(async (response) => {
   wordlist = response.message;
-  const sixLetterWordsWithQ = wordlist.filter(word => word.length === 6 && word.includes('Q') && !word.includes('QU'));
+  const sixLetterWordsWithQ = wordlist.filter(
+    (word) => word.length === 6 && word.includes('Q') && !word.includes('QU'),
+  );
   console.log(`Trying ${sixLetterWordsWithQ.length} Q-words...`);
 
   const trie = new Trie();
@@ -71,12 +92,17 @@ getWordlist().then(async (response) => {
     while (attempt++ < maxAttempts) {
       board = generateBoardWithWord(baseWord);
       [words, valid] = findWords(4, board, trie);
-      const qWords = words.filter(w => w.includes('Q'));
+      const qWords = words.filter((w) => w.includes('Q'));
 
       if (valid && qWords.length > 10) {
         console.log(`✅ Success for word: ${baseWord}`);
         for (let i = 0; i < 4; i++) {
-          console.log(board.slice(i * 4, (i + 1) * 4).split('').join(' '));
+          console.log(
+            board
+              .slice(i * 4, (i + 1) * 4)
+              .split('')
+              .join(' '),
+          );
         }
         createBoard(baseWord, board);
         // const sortedWords = words.sort((a, b) =>
@@ -87,7 +113,12 @@ getWordlist().then(async (response) => {
       } else {
         console.log(`❌ [${baseWord}] Attempt ${attempt} failed (Q-words: ${qWords.length})`);
         for (let i = 0; i < 4; i++) {
-          console.log(board.slice(i * 4, (i + 1) * 4).split('').join(' '));
+          console.log(
+            board
+              .slice(i * 4, (i + 1) * 4)
+              .split('')
+              .join(' '),
+          );
         }
       }
     }
@@ -98,16 +129,12 @@ getWordlist().then(async (response) => {
   }
 });
 
-
-
-
-    
 function weightedRandomLetter() {
   const rand = Math.random();
   let accum = 0;
   for (let i = 0; i < letters.length; i++) {
-      accum += probabilities[i];
-      if (rand < accum) return letters[i];
+    accum += probabilities[i];
+    if (rand < accum) return letters[i];
   }
   return letters[letters.length - 1]; // fallback
 }
@@ -117,9 +144,14 @@ function generateBoardWithWord(word: string): string {
   const boardLength = size * size;
 
   const directions = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1],          [0, 1],
-    [1, -1],  [1, 0], [1, 1],
+    [-1, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, -1],
+    [0, 1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
   ];
 
   const index = (x: number, y: number) => y * size + x;
@@ -137,11 +169,7 @@ function generateBoardWithWord(word: string): string {
     for (const [dx, dy] of shuffledDirs) {
       const nx = x + dx;
       const ny = y + dy;
-      if (
-        nx >= 0 && nx < size &&
-        ny >= 0 && ny < size &&
-        !visited[ny][nx]
-      ) {
+      if (nx >= 0 && nx < size && ny >= 0 && ny < size && !visited[ny][nx]) {
         if (dfs(nx, ny, depth + 1)) return true;
       }
     }
@@ -156,14 +184,14 @@ function generateBoardWithWord(word: string): string {
     const startX = Math.floor(Math.random() * size);
     const startY = Math.floor(Math.random() * size);
     path = [];
-    visited.forEach(row => row.fill(false));
+    visited.forEach((row) => row.fill(false));
     if (dfs(startX, startY, 0)) {
       success = true;
       break;
     }
   }
 
-  if (!success) throw new Error("Failed to generate valid path for word");
+  if (!success) throw new Error('Failed to generate valid path for word');
 
   const board: (string | null)[] = Array(boardLength).fill(null);
   path.forEach(([x, y], i) => {
@@ -208,9 +236,6 @@ function generateBoardWithWord(word: string): string {
   return board.join('');
 }
 
-
-
-
 // const generateRandomboard = () => {
 //     const size = 4;
 //     let letters = '';
@@ -228,7 +253,7 @@ function generateBoardWithWord(word: string): string {
 //       size: 4,
 //       letters,
 //       date: new Date().toISOString().split('T')[0]
-//     } 
+//     }
 //     console.log(randomBoard)
 // }
 

@@ -1,0 +1,5 @@
+.next
+node_modules
+public/*.txt
+app/lib/dictionary.json
+*.zip

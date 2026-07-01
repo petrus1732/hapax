@@ -1,11 +1,8 @@
 import { sql } from '@vercel/postgres';
-import {
-  Board
-} from './definitions';
+import { Board } from './definitions';
 
 export async function fetchBoards() {
   try {
-
     const data = await sql<Board>`SELECT * FROM boards ORDER BY date DESC`;
     console.log(data.rows);
 
