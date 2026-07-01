@@ -7,6 +7,8 @@ import { Trie } from '@/app/lib/trie';
 import {
   BLITZ_SECONDS,
   BOARD_SIZE,
+  MAX_BOARD_ROLL_ATTEMPTS,
+  MIN_PLAYABLE_WORDS,
   BonusOrNull,
   PracticeMode,
   ROUND_SECONDS,
@@ -15,7 +17,10 @@ import {
   TrainingLetter,
   bestRouteForWord,
   calculatePathScore,
+  calculateInspirationChargeState,
   countBonuses,
+  fallbackBoardForMode,
+  filterCountableWordsForMode,
   formatRoute,
   generateBonuses,
   generateTrainingBoard,
@@ -25,6 +30,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type ArenaSubmode = 'arena-gladiator' | 'arena-tight-rope' | 'arena-8-plus-superior';
+type RoundPhase = 'idle' | 'countdown' | 'playing' | 'finished';
 
 type FoundWord = {
   word: string;
@@ -35,21 +41,21 @@ type FoundWord = {
 
 const MAIN_MODES: Array<{ id: PracticeMode | 'custom-arena'; label: string; description: string }> = [
   { id: 'practice', label: 'practice', description: 'No score and no multipliers.' },
-  { id: 'normal', label: 'e0 normal', description: 'R1/R2/R3 Word Blitz-style scoring.' },
-  { id: 'inspiration', label: 'e1 inspiration', description: 'Earn one hint per 5 manually found words.' },
+  { id: 'normal', label: 'normal', description: 'R1/R2/R3 Word Blitz-style scoring.' },
+  { id: 'inspiration', label: 'inspiration', description: 'Earn one hint per 5 manually found words.' },
   {
     id: 'length-bonus-5-plus',
-    label: 'e2 5+ bonus',
+    label: '5+ bonus',
     description: '+50 for each valid word with length at least 5.',
   },
-  { id: 'blitz', label: 'e3 blitz', description: '30 seconds; each accepted word adds 1 second.' },
+  { id: 'blitz', label: 'blitz', description: '30 seconds; each accepted word adds 1 second.' },
   {
     id: 'long-words-only-4-plus',
-    label: 'e4 4+ words',
+    label: '4+ words',
     description: 'Only words of length 4 or more count.',
   },
-  { id: 'quadruple-bonus', label: 'e5 quadruple bonus', description: 'R4 board with 4W and 4L tiles.' },
-  { id: 'evolution', label: 'e6 evolution', description: 'Tiles level up to +5, +10, and +50.' },
+  { id: 'quadruple-bonus', label: 'quadruple bonus', description: 'R4 board with 4W and 4L tiles.' },
+  { id: 'evolution', label: 'evolution', description: 'Tiles level up to +5, +10, and +50.' },
   {
     id: 'custom-arena',
     label: 'custom arena',
@@ -67,17 +73,17 @@ const ROUND_CHOICES: Array<{ id: RoundMode; label: string; description: string }
 const ARENA_CHOICES: Array<{ id: ArenaSubmode; label: string; description: string }> = [
   {
     id: 'arena-gladiator',
-    label: 'f1 gladiator',
+    label: 'gladiator',
     description: 'Only length 5+ words count; valid shorter words are penalties.',
   },
   {
     id: 'arena-tight-rope',
-    label: 'f2 tight rope',
+    label: 'tight rope',
     description: 'Only length exactly 4 counts; other valid lengths are penalties.',
   },
   {
     id: 'arena-8-plus-superior',
-    label: 'f3 8+ superior',
+    label: '8+ superior',
     description: 'Normal play; length 8+ words earn kudos.',
   },
 ];
@@ -121,6 +127,7 @@ export default function RandomBoardClient() {
   const [bonuses, setBonuses] = useState<BonusOrNull[]>(Array(BOARD_SIZE * BOARD_SIZE).fill(null));
   const [wordlist, setWordlist] = useState<string[]>([]);
   const [trie, setTrie] = useState<Trie | null>(null);
+  const [dictionaryWords, setDictionaryWords] = useState<string[][]>([]);
   const [words, setWords] = useState<string[][]>([]);
   const [swiped, setSwiped] = useState<Record<string, boolean>>({});
   const [foundWords, setFoundWords] = useState<Record<string, FoundWord>>({});
@@ -130,6 +137,8 @@ export default function RandomBoardClient() {
   const [kudos, setKudos] = useState(0);
   const [evolutionLevels, setEvolutionLevels] = useState<number[]>(Array(BOARD_SIZE * BOARD_SIZE).fill(0));
   const [timeLeft, setTimeLeft] = useState(0);
+  const [roundPhase, setRoundPhase] = useState<RoundPhase>('idle');
+  const [countdown, setCountdown] = useState(0);
   const [finished, setFinished] = useState(false);
   const [openWordList, setOpenWordList] = useState(false);
   const [mask, setMask] = useState(true);
@@ -146,16 +155,24 @@ export default function RandomBoardClient() {
   const isPractice = activeMode === 'practice';
   const isEvolution = activeMode === 'evolution';
   const validMinLength = activeMode === 'long-words-only-4-plus' ? 4 : 2;
+  const validWordsForSwipe =
+    activeMode === 'arena-gladiator' || activeMode === 'arena-tight-rope' ? dictionaryWords : words;
   const flatWords = useMemo(() => words.flat().filter(Boolean), [words]);
+  const allBoardWords = useMemo(() => dictionaryWords.flat().filter(Boolean), [dictionaryWords]);
+  const wordListGroups = finished ? dictionaryWords : words;
+  const wordListTotal = finished ? allBoardWords.length : flatWords.length;
   const foundWordList = useMemo(() => Object.values(foundWords), [foundWords]);
-  const availableHints =
-    activeMode === 'inspiration' ? Math.max(0, Math.floor(manualAcceptedCount / 5) - hintsUsed) : 0;
+  const inspirationCharge = calculateInspirationChargeState(manualAcceptedCount, hintsUsed);
+  const availableHints = activeMode === 'inspiration' ? inspirationCharge.availableHints : 0;
   const baseScore = foundWordList.reduce((total, item) => total + item.score, 0);
   const evolutionBonusScore = evolutionLevels.reduce((total, level) => total + scoreEvolutionLevel(level), 0);
   const totalScore = baseScore + (isEvolution ? evolutionBonusScore : 0);
   const bonusCounts = useMemo(() => countBonuses(bonuses), [bonuses]);
   const canSwipe =
-    !finished && !(hasTimer && timeLeft <= 0 && activeMode === 'inspiration' && availableHints > 0);
+    roundPhase === 'playing' &&
+    !finished &&
+    !(hasTimer && timeLeft <= 0 && activeMode === 'inspiration' && availableHints > 0) &&
+    !(hasTimer && timeLeft <= 0);
 
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');
@@ -183,14 +200,29 @@ export default function RandomBoardClient() {
     if (!board || !trie) return;
 
     const found = findWords(board.size, board.letters, trie)[0]
-      .filter((word) => (activeMode === 'long-words-only-4-plus' ? word.length >= 4 : true))
+      .filter((word) => word.length >= 2)
       .sort((a, b) => (a.length === b.length ? (a < b ? -1 : 1) : a.length - b.length));
+    const countable = filterCountableWordsForMode(found, activeMode);
 
-    setWords(groupWordsByLength(found));
+    setDictionaryWords(groupWordsByLength(found));
+    setWords(groupWordsByLength(countable));
   }, [activeMode, board, trie]);
 
   useEffect(() => {
-    if (!hasTimer || finished || !board) return;
+    if (!board) return;
+
+    document.documentElement.classList.add('wb-round-body-locked');
+    document.body.classList.add('wb-round-body-locked');
+    window.scrollTo(0, 0);
+
+    return () => {
+      document.documentElement.classList.remove('wb-round-body-locked');
+      document.body.classList.remove('wb-round-body-locked');
+    };
+  }, [board]);
+
+  useEffect(() => {
+    if (!hasTimer || finished || !board || roundPhase !== 'playing') return;
 
     if (timeLeft <= 0) {
       if (activeMode === 'inspiration' && availableHints > 0) {
@@ -200,6 +232,7 @@ export default function RandomBoardClient() {
         return;
       }
       setFinished(true);
+      setRoundPhase('finished');
       setStatusMessage('Round finished.');
       return;
     }
@@ -209,7 +242,25 @@ export default function RandomBoardClient() {
     }, 100);
 
     return () => window.clearInterval(timer);
-  }, [activeMode, availableHints, board, finished, hasTimer, timeLeft]);
+  }, [activeMode, availableHints, board, finished, hasTimer, roundPhase, timeLeft]);
+
+  useEffect(() => {
+    if (roundPhase !== 'countdown') return;
+
+    if (countdown <= 0) {
+      setRoundPhase('playing');
+      setStatusMessage(
+        activeMode === 'practice' ? 'Practice board is ready.' : `${modeTitle(activeMode)} round started.`,
+      );
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [activeMode, countdown, roundPhase]);
 
   const resetRoundState = useCallback(() => {
     setSwiped({});
@@ -221,15 +272,63 @@ export default function RandomBoardClient() {
     setEvolutionLevels(Array(BOARD_SIZE * BOARD_SIZE).fill(0));
     setFinished(false);
     setOpenWordList(false);
+    setMask(true);
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
   }, []);
 
   const startNewBoard = useCallback(() => {
-    resetRoundState();
+    if (!trie) return;
 
-    const letters =
+    resetRoundState();
+    setRoundPhase('countdown');
+    setCountdown(3);
+
+    const generateCandidateLetters = () =>
       activeMode === 'training' ? generateTrainingBoard(wordlist, trainingLetter) : randomBoardLetters();
+
+    const scoreCandidate = (letters: string) => {
+      const found = findWords(BOARD_SIZE, letters, trie)[0].filter((word) => word.length >= 2);
+      return { found, count: found.length };
+    };
+
+    let letters = generateCandidateLetters();
+    let bestResult = scoreCandidate(letters);
+    let metMinimum = bestResult.count >= MIN_PLAYABLE_WORDS;
+    let attemptsUsed = 1;
+
+    for (let attempt = 2; attempt <= MAX_BOARD_ROLL_ATTEMPTS && !metMinimum; attempt += 1) {
+      attemptsUsed = attempt;
+      const candidateLetters = generateCandidateLetters();
+      const result = scoreCandidate(candidateLetters);
+
+      if (result.count > bestResult.count) {
+        letters = candidateLetters;
+        bestResult = result;
+      }
+
+      if (result.count >= MIN_PLAYABLE_WORDS) {
+        letters = candidateLetters;
+        bestResult = result;
+        metMinimum = true;
+      }
+    }
+
+    if (!metMinimum) {
+      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
+      const fallbackResult = scoreCandidate(fallbackLetters);
+      if (fallbackResult.count >= bestResult.count) {
+        letters = fallbackLetters;
+        bestResult = fallbackResult;
+      }
+      metMinimum = bestResult.count >= MIN_PLAYABLE_WORDS;
+    }
+
+    const sortedAllWords = bestResult.found.sort((a, b) =>
+      a.length === b.length ? (a < b ? -1 : 1) : a.length - b.length,
+    );
+    const sortedCountableWords = filterCountableWordsForMode(sortedAllWords, activeMode);
+
     const nextBonuses =
       activeMode === 'practice' || activeMode === 'evolution'
         ? Array(BOARD_SIZE * BOARD_SIZE).fill(null)
@@ -245,34 +344,30 @@ export default function RandomBoardClient() {
       theme: activeMode === 'training' ? 'Rare Letters' : undefined,
       subtheme: activeMode === 'training' ? trainingLetter : undefined,
     });
+    setDictionaryWords(groupWordsByLength(sortedAllWords));
+    setWords(groupWordsByLength(sortedCountableWords));
     setBonuses(nextBonuses);
     setTimeLeft(roundDuration);
     setStatusMessage(
-      activeMode === 'practice' ? 'Practice board ready.' : `${modeTitle(activeMode)} board started.`,
+      metMinimum
+        ? `Board ready with ${sortedAllWords.length} board words. Countdown starts now.`
+        : `Best board found has ${sortedAllWords.length} board words after ${attemptsUsed} rerolls.`,
     );
-  }, [activeMode, effectiveRound, resetRoundState, roundDuration, trainingLetter, wordlist]);
-
-  useEffect(() => {
-    if (!board && trie) startNewBoard();
-  }, [board, startNewBoard, trie]);
+  }, [activeMode, effectiveRound, resetRoundState, roundDuration, trainingLetter, trie, wordlist]);
 
   const addFoundWord = useCallback((entry: FoundWord) => {
     setFoundWords((current) => ({ ...current, [entry.word]: entry }));
     setSwiped((current) => ({ ...current, [entry.word]: true }));
-    setHighlightedRoute(entry.path);
-    setSelectedRouteInfo(
-      `${entry.word}: ${formatRoute(entry.path)}${entry.score ? ` · ${entry.score} pts` : ''}`,
-    );
   }, []);
 
   const handleSubmitTerm = useCallback(
     ({ word, path, isDictionaryWord, isAlreadyFound }: SubmittedTerm): SubmitResult => {
-      if (finished) return { accepted: false, color: 'gray' };
+      if (roundPhase !== 'playing' || finished) return { accepted: false, color: 'gray' };
       if (hasTimer && timeLeft <= 0) return { accepted: false, color: 'gray' };
       if (!isDictionaryWord) return { accepted: false, color: 'red' };
       if (isAlreadyFound) {
-        setHighlightedRoute(foundWords[word]?.path ?? path);
-        return { accepted: false, color: 'yellow' };
+        setStatusMessage(`${word} was already found.`);
+        return { accepted: false, color: 'inherit' };
       }
 
       if (activeMode === 'long-words-only-4-plus' && word.length < 4) {
@@ -317,7 +412,7 @@ export default function RandomBoardClient() {
         });
       }
 
-      return { accepted: true, color: 'green' };
+      return { accepted: true, color: 'inherit' };
     },
     [
       activeMode,
@@ -325,11 +420,11 @@ export default function RandomBoardClient() {
       board?.letters,
       bonuses,
       finished,
-      foundWords,
       hasTimer,
       isEvolution,
       isPractice,
       lengthBonus5Plus,
+      roundPhase,
       timeLeft,
     ],
   );
@@ -351,6 +446,10 @@ export default function RandomBoardClient() {
 
     if (!bestRoute) return;
     addFoundWord({ word, path: bestRoute.path, score: bestRoute.score, inspired: true });
+    setHighlightedRoute(bestRoute.path);
+    setSelectedRouteInfo(
+      `${word} · swipe ${formatRoute(bestRoute.path)}${bestRoute.score ? ` · ${bestRoute.score} pts` : ''}`,
+    );
     setHintsUsed((current) => current + 1);
     setStatusMessage(`Inspiration found ${word}${bestRoute.score ? ` for ${bestRoute.score} points` : ''}.`);
   }, [addFoundWord, availableHints, board, bonuses, flatWords, foundWords, isPractice, lengthBonus5Plus]);
@@ -365,20 +464,24 @@ export default function RandomBoardClient() {
       !finished
     ) {
       setFinished(true);
+      setRoundPhase('finished');
       setStatusMessage('Round finished.');
     }
-  }, [activeMode, availableHints, board, finished, hasTimer, timeLeft]);
+  }, [activeMode, availableHints, board, finished, hasTimer, roundPhase, timeLeft]);
+
+  useEffect(() => {
+    if (roundPhase !== 'finished' || !board) return;
+    setMask(false);
+    setOpenWordList(true);
+  }, [board, roundPhase]);
 
   const selectWordRoute = useCallback(
     (word: string) => {
       if (!board) return;
-      const found = foundWords[word];
-      const route = found
-        ? { path: found.path, score: found.score }
-        : bestRouteForWord(board.size, board.letters, word, bonuses, {
-            lengthBonus5Plus,
-            practice: isPractice,
-          });
+      const route = bestRouteForWord(board.size, board.letters, word, bonuses, {
+        lengthBonus5Plus,
+        practice: isPractice,
+      });
 
       if (!route) {
         setSelectedRouteInfo(`${word}: no route found.`);
@@ -387,32 +490,65 @@ export default function RandomBoardClient() {
 
       setHighlightedRoute(route.path);
       setSelectedRouteInfo(
-        `${word}: ${formatRoute(route.path)}${route.score ? ` · ${route.score} pts` : ''}`,
+        `${word} · swipe ${formatRoute(route.path)}${route.score ? ` · ${route.score} pts` : ''}`,
       );
     },
-    [board, bonuses, foundWords, isPractice, lengthBonus5Plus],
+    [board, bonuses, isPractice, lengthBonus5Plus],
   );
+
+  const showWordRouteFromModal = (word: string) => {
+    selectWordRoute(word);
+    setOpenWordList(false);
+  };
 
   const changeMainMode = (nextMode: PracticeMode | 'custom-arena') => {
     const resolvedMode = nextMode === 'custom-arena' ? arenaMode : nextMode;
     setMode(resolvedMode);
     setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage('Choose a mode, then press Start.');
   };
 
   const changeArenaMode = (nextArenaMode: ArenaSubmode) => {
     setArenaMode(nextArenaMode);
     setMode(nextArenaMode);
     setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage('Choose a mode, then press Start.');
   };
 
   const changeRoundMode = (nextRoundMode: RoundMode) => {
     setRoundMode(nextRoundMode);
     setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage('Round changed. Press Start when ready.');
   };
 
   const changeTrainingLetter = (letter: TrainingLetter) => {
     setTrainingLetter(letter);
     setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage('Training letter changed. Press Start when ready.');
+  };
+
+  const leaveBoard = () => {
+    setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setFinished(false);
+    setOpenWordList(false);
+    setHighlightedRoute([]);
+    setSelectedRouteInfo('');
+    setStatusMessage('Choose a mode, then press Start.');
   };
 
   const displayedMainMode = MAIN_MODES.find(
@@ -420,122 +556,134 @@ export default function RandomBoardClient() {
   );
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-4 pb-16 pt-6">
-      <section className="w-full rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-        <div className="mb-3 flex flex-col gap-1">
-          <h1 className="text-2xl font-black">Word Blitz Practice Lab</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Pick a practice/event/training mode. Multipliers are generated per board and never overlap.
-          </p>
-        </div>
+    <main
+      className={
+        board
+          ? 'wb-round-main w-full px-2 py-2 sm:px-3'
+          : 'mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-4 pb-16 pt-6'
+      }
+    >
+      {!board && (
+        <section className="w-full rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+          <div className="mb-3 flex flex-col gap-1">
+            <h1 className="text-2xl font-black">Word Blitz Practice Lab</h1>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Pick a practice/event/training mode. Multipliers are generated per board and never overlap.
+            </p>
+          </div>
 
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
-          {MAIN_MODES.map((candidate) => (
+          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
+            {MAIN_MODES.map((candidate) => (
+              <button
+                key={candidate.id}
+                className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow ${
+                  displayedMainMode?.id === candidate.id
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
+                    : 'border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-900'
+                }`}
+                onClick={() => changeMainMode(candidate.id)}
+              >
+                <div className="font-bold">{candidate.label}</div>
+                <div className="text-xs opacity-75">{candidate.description}</div>
+              </button>
+            ))}
+          </div>
+
+          {mode.startsWith('arena-') && (
+            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 dark:border-orange-900 dark:bg-orange-950/40">
+              <div className="mb-2 text-sm font-bold text-orange-700 dark:text-orange-200">
+                Custom arena rules
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {ARENA_CHOICES.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    className={`rounded-lg border p-2 text-left text-sm ${
+                      arenaMode === candidate.id
+                        ? 'border-orange-500 bg-white text-orange-700 dark:bg-zinc-900 dark:text-orange-200'
+                        : 'border-orange-200 bg-orange-100/50 dark:border-orange-900 dark:bg-zinc-900'
+                    }`}
+                    onClick={() => changeArenaMode(candidate.id)}
+                  >
+                    <div className="font-bold">{candidate.label}</div>
+                    <div className="text-xs opacity-75">{candidate.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mode === 'training' && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
+                Training letter
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TRAINING_LETTERS.map((letter) => (
+                  <button
+                    key={letter}
+                    className={`h-11 w-11 rounded-lg border text-xl font-black ${
+                      trainingLetter === letter
+                        ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
+                        : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
+                    }`}
+                    onClick={() => changeTrainingLetter(letter)}
+                  >
+                    {letter}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isRoundMode(mode) && (
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="mb-2 text-sm font-bold">Round bonus layout</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {ROUND_CHOICES.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    className={`rounded-lg border p-2 text-left text-sm ${
+                      roundMode === candidate.id
+                        ? 'border-blue-500 bg-white text-blue-700 dark:bg-zinc-950 dark:text-blue-200'
+                        : 'border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-950'
+                    }`}
+                    onClick={() => changeRoundMode(candidate.id)}
+                  >
+                    <div className="font-bold">{candidate.label}</div>
+                    <div className="text-xs opacity-75">{candidate.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mode === 'quadruple-bonus' && (
+            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950/40">
+              Quadruple bonus uses R4: 1×4W, 1×3W, 2×2W, 1×4L, 2×3L, 2×2L.
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
-              key={candidate.id}
-              className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow ${
-                displayedMainMode?.id === candidate.id
-                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
-                  : 'border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-900'
-              }`}
-              onClick={() => changeMainMode(candidate.id)}
+              className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow hover:bg-blue-700"
+              onClick={startNewBoard}
+              disabled={!trie}
             >
-              <div className="font-bold">{candidate.label}</div>
-              <div className="text-xs opacity-75">{candidate.description}</div>
+              {trie
+                ? roundPhase === 'idle'
+                  ? 'Start board'
+                  : 'Start / reroll board'
+                : 'Loading dictionary...'}
             </button>
-          ))}
-        </div>
-
-        {mode.startsWith('arena-') && (
-          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 dark:border-orange-900 dark:bg-orange-950/40">
-            <div className="mb-2 text-sm font-bold text-orange-700 dark:text-orange-200">
-              Custom arena rules
-            </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {ARENA_CHOICES.map((candidate) => (
-                <button
-                  key={candidate.id}
-                  className={`rounded-lg border p-2 text-left text-sm ${
-                    arenaMode === candidate.id
-                      ? 'border-orange-500 bg-white text-orange-700 dark:bg-zinc-900 dark:text-orange-200'
-                      : 'border-orange-200 bg-orange-100/50 dark:border-orange-900 dark:bg-zinc-900'
-                  }`}
-                  onClick={() => changeArenaMode(candidate.id)}
-                >
-                  <div className="font-bold">{candidate.label}</div>
-                  <div className="text-xs opacity-75">{candidate.description}</div>
-                </button>
-              ))}
-            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-300">{statusMessage}</div>
           </div>
-        )}
-
-        {mode === 'training' && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
-            <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
-              Training letter
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {TRAINING_LETTERS.map((letter) => (
-                <button
-                  key={letter}
-                  className={`h-11 w-11 rounded-lg border text-xl font-black ${
-                    trainingLetter === letter
-                      ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
-                      : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
-                  }`}
-                  onClick={() => changeTrainingLetter(letter)}
-                >
-                  {letter}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {isRoundMode(mode) && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="mb-2 text-sm font-bold">Round bonus layout</div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {ROUND_CHOICES.map((candidate) => (
-                <button
-                  key={candidate.id}
-                  className={`rounded-lg border p-2 text-left text-sm ${
-                    roundMode === candidate.id
-                      ? 'border-blue-500 bg-white text-blue-700 dark:bg-zinc-950 dark:text-blue-200'
-                      : 'border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-950'
-                  }`}
-                  onClick={() => changeRoundMode(candidate.id)}
-                >
-                  <div className="font-bold">{candidate.label}</div>
-                  <div className="text-xs opacity-75">{candidate.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {mode === 'quadruple-bonus' && (
-          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950/40">
-            Quadruple bonus uses R4: 1×4W, 1×3W, 2×2W, 1×4L, 2×3L, 2×2L.
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow hover:bg-blue-700"
-            onClick={startNewBoard}
-            disabled={!trie}
-          >
-            {trie ? 'Start / reroll board' : 'Loading dictionary...'}
-          </button>
-          <div className="text-sm text-gray-600 dark:text-gray-300">{statusMessage}</div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {board && (
-        <section className="grid w-full gap-6 lg:grid-cols-[1fr_360px]">
-          <div className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+        <section className="wb-round-layout w-full gap-3">
+          <div className="wb-round-panel rounded-2xl border border-gray-200 bg-white/80 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70 sm:p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm uppercase tracking-wide text-gray-500">{modeTitle(activeMode)}</div>
@@ -563,54 +711,92 @@ export default function RandomBoardClient() {
                   className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"
                   onClick={() => setOpenWordList(true)}
                 >
-                  Words {foundWordList.length}/{flatWords.length}
+                  Words {foundWordList.length}/{wordListTotal}
+                </button>
+                <button
+                  className="rounded-full bg-blue-600 px-3 py-1 font-bold text-white hover:bg-blue-700"
+                  onClick={startNewBoard}
+                  disabled={!trie}
+                >
+                  Reroll
+                </button>
+                <button
+                  className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                  onClick={leaveBoard}
+                >
+                  Modes
                 </button>
               </div>
             </div>
 
-            <SquareBoard
-              size={board.size}
-              letters={board.letters}
-              swiped={swiped}
-              setSwiped={setSwiped}
-              validWords={words}
-              minLength={validMinLength}
-              bonuses={bonuses}
-              showTileScores={!isPractice}
-              evolutionLevels={isEvolution ? evolutionLevels : []}
-              highlightedRoute={highlightedRoute}
-              disabled={!canSwipe}
-              onSubmitTerm={handleSubmitTerm}
-              onWordClick={selectWordRoute}
-            />
+            <div className="wb-board-stage relative">
+              <SquareBoard
+                size={board.size}
+                letters={board.letters}
+                swiped={swiped}
+                setSwiped={setSwiped}
+                validWords={validWordsForSwipe}
+                minLength={validMinLength}
+                bonuses={bonuses}
+                showTileScores={!isPractice}
+                evolutionLevels={isEvolution ? evolutionLevels : []}
+                highlightedRoute={highlightedRoute}
+                disabled={!canSwipe}
+                onSubmitTerm={handleSubmitTerm}
+                onWordClick={selectWordRoute}
+              />
+
+              {roundPhase === 'countdown' && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/45 backdrop-blur-[1px]">
+                  <div className="flex h-32 w-32 items-center justify-center rounded-full bg-white text-7xl font-black text-blue-600 shadow-2xl dark:bg-zinc-950 dark:text-blue-300">
+                    {countdown || 'GO'}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {activeMode === 'inspiration' && (
-              <div className="mt-5 flex justify-center">
-                <button
-                  className={`rounded-full px-5 py-3 font-black shadow ${
-                    availableHints > 0
-                      ? 'bg-purple-600 text-white hover:bg-purple-700'
-                      : 'bg-gray-200 text-gray-500 dark:bg-zinc-800'
-                  }`}
-                  onClick={useInspirationHint}
-                  disabled={availableHints <= 0 || finished}
-                >
-                  💡 Inspiration hint × {availableHints}
-                </button>
+              <div className="mt-5 rounded-2xl border border-purple-200 bg-purple-50/80 p-3 dark:border-purple-900 dark:bg-purple-950/30">
+                <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold text-purple-800 dark:text-purple-100">
+                  <span>💡 Inspiration charge</span>
+                  <span>
+                    {inspirationCharge.currentCharge}/{inspirationCharge.threshold} to next · {availableHints}{' '}
+                    ready
+                  </span>
+                </div>
+                <div className="wb-inspiration-progress" aria-label="Inspiration charge progress">
+                  <div
+                    className="wb-inspiration-progress-bar"
+                    style={{ width: `${Math.round(inspirationCharge.progressRatio * 100)}%` }}
+                  />
+                </div>
+                <div className="mt-3 flex justify-center">
+                  <button
+                    className={`rounded-full px-5 py-3 font-black shadow ${
+                      availableHints > 0
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-gray-200 text-gray-500 dark:bg-zinc-800'
+                    }`}
+                    onClick={useInspirationHint}
+                    disabled={availableHints <= 0 || finished || roundPhase !== 'playing'}
+                  >
+                    Use inspiration × {availableHints}
+                  </button>
+                </div>
               </div>
             )}
 
             {selectedRouteInfo && (
-              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
                 {selectedRouteInfo}
               </div>
             )}
           </div>
 
-          <aside className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+          <aside className="wb-round-sidebar hidden rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70 lg:block">
             <h2 className="mb-3 text-lg font-black">Round stats</h2>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <Stat label="Words" value={`${foundWordList.length}/${flatWords.length}`} />
+              <Stat label="Words" value={`${foundWordList.length}/${wordListTotal}`} />
               <Stat label="Score" value={isPractice ? 'off' : totalScore.toString()} />
               <Stat label="Base" value={isPractice ? 'off' : baseScore.toString()} />
               <Stat label="Evolution" value={isEvolution ? evolutionBonusScore.toString() : '—'} />
@@ -668,7 +854,7 @@ export default function RandomBoardClient() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-4 pt-10">
           <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl dark:bg-zinc-950">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">Word list</h2>
+              <h2 className="text-xl font-black">{finished ? 'All board words' : 'Word list'}</h2>
               <button
                 className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800"
                 onClick={() => setOpenWordList(false)}
@@ -676,12 +862,19 @@ export default function RandomBoardClient() {
                 Close
               </button>
             </div>
-            <label className="mb-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!mask} onChange={(event) => setMask(!event.target.checked)} />
-              reveal unswiped words
-            </label>
+            {finished ? (
+              <div className="mb-3 rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
+                Time is up. All {allBoardWords.length} board words are revealed; click any word to see its
+                highest-scoring route.
+              </div>
+            ) : (
+              <label className="mb-3 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!mask} onChange={(event) => setMask(!event.target.checked)} />
+                reveal unswiped words
+              </label>
+            )}
             <div className="max-h-[70vh] overflow-auto pr-1">
-              {words.map((group, length) => {
+              {wordListGroups.map((group, length) => {
                 if (!group || length === 0) return null;
                 return (
                   <div key={length} className="mb-4">
@@ -693,9 +886,9 @@ export default function RandomBoardClient() {
                           <button
                             key={word}
                             className={`rounded-lg px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-800 ${found ? 'font-bold text-green-600' : 'text-gray-500'}`}
-                            onClick={() => selectWordRoute(word)}
+                            onClick={() => showWordRouteFromModal(word)}
                           >
-                            {found || !mask ? word : '*'.repeat(word.length)}
+                            {finished || found || !mask ? word : '*'.repeat(word.length)}
                             {found?.score ? (
                               <span className="ml-1 text-xs opacity-70">{found.score}</span>
                             ) : null}

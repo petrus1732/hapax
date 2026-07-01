@@ -81,7 +81,7 @@ export default function Tile({
   }, [disabled, id, onStart, onMove]);
 
   const className = [
-    'wb-tile relative select-none rounded-md flex justify-center items-center w-full h-full shadow-sm transition-all',
+    'wb-tile relative z-10 select-none rounded-md flex justify-center items-center w-full h-full shadow-sm transition-all',
     bonusFrameClass(bonus),
     isActive ? 'wb-tile-active' : '',
     isRouteHighlighted && !isActive ? 'wb-tile-route' : '',

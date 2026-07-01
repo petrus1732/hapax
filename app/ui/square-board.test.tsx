@@ -115,6 +115,57 @@ describe('SquareBoard', () => {
     expect(props.onSubmitTerm).not.toHaveBeenCalled();
   });
 
+  it('draws a connecting line while swiping and clears it immediately after release', () => {
+    const { container, tile } = renderBoard();
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+
+    expect(container.querySelector('.wb-route-line-active')).toBeInTheDocument();
+
+    fireEvent.mouseUp(tile(1));
+
+    expect(container.querySelector('.wb-route-line-active')).not.toBeInTheDocument();
+    expect(container.querySelector('.wb-route-line-selected')).not.toBeInTheDocument();
+  });
+
+  it('clears active black tiles immediately after mouse release', () => {
+    const { tile } = renderBoard();
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+    expect(tile(0)).toHaveClass('wb-tile-active');
+    expect(tile(1)).toHaveClass('wb-tile-active');
+
+    fireEvent.mouseUp(tile(1));
+
+    expect(tile(0)).not.toHaveClass('wb-tile-active');
+    expect(tile(1)).not.toHaveClass('wb-tile-active');
+  });
+
+  it('clears active black tiles when the release happens outside the board', () => {
+    const { props, tile } = renderBoard();
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+    fireEvent.mouseUp(window);
+
+    expect(props.onSubmitTerm).toHaveBeenCalledTimes(1);
+    expect(tile(0)).not.toHaveClass('wb-tile-active');
+    expect(tile(1)).not.toHaveClass('wb-tile-active');
+  });
+
+  it('cancels the active route on pointer cancellation without submitting', () => {
+    const { props, tile } = renderBoard();
+
+    fireEvent.mouseDown(tile(0));
+    expect(tile(0)).toHaveClass('wb-tile-active');
+    fireEvent.pointerCancel(window);
+
+    expect(props.onSubmitTerm).not.toHaveBeenCalled();
+    expect(tile(0)).not.toHaveClass('wb-tile-active');
+  });
+
   it('renders score dots, tile points, evolution levels, and highlighted routes', () => {
     const { container } = renderBoard({
       bonuses: ['dw', null, null, null, null, 'tl'],
@@ -129,6 +180,21 @@ describe('SquareBoard', () => {
     expect(screen.getByText('Lv.2')).toBeInTheDocument();
     expect(container.querySelector('[data-tile-id="1"]')).toHaveClass('wb-tile-route');
     expect(container.querySelector('[data-tile-id="5"]')).toHaveClass('wb-tile-route');
+    expect(container.querySelector('.wb-route-line-selected')).toBeInTheDocument();
+  });
+
+  it('keeps the route overlay out of grid flow and explicitly defines square rows', () => {
+    const { container, tile } = renderBoard();
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+
+    const grid = container.querySelector('.relative.isolate.grid') as HTMLElement;
+    const overlay = container.querySelector('.wb-route-overlay') as SVGElement;
+
+    expect(grid).toHaveStyle({ gridTemplateRows: 'repeat(4, minmax(0, 1fr))' });
+    expect(grid).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' });
+    expect(overlay).toHaveClass('wb-route-overlay');
   });
 
   it('falls back to local swiped state behavior when no mode callback is supplied', () => {
@@ -139,6 +205,6 @@ describe('SquareBoard', () => {
     fireEvent.mouseUp(tile(1));
 
     expect(setSwiped).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('AB')).toHaveStyle({ color: 'rgb(0, 128, 0)' });
+    expect(screen.getByText('AB')).not.toHaveStyle({ color: 'rgb(0, 128, 0)' });
   });
 });

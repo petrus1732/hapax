@@ -29,9 +29,46 @@ export type WordEntry = {
 export const BOARD_SIZE = 4;
 export const ROUND_SECONDS = 80;
 export const BLITZ_SECONDS = 30;
-
+export const MIN_PLAYABLE_WORDS = 90;
+export const MAX_BOARD_ROLL_ATTEMPTS = 120;
+export const WORD_RICH_FALLBACK_BOARD = 'MARMNEAYOSLAAZXE';
 export const TRAINING_LETTERS = ['Q', 'X', 'Z', 'J'] as const;
+
+export const INSPIRATION_CHARGE_THRESHOLD = 5;
+
+export type InspirationChargeState = {
+  availableHints: number;
+  currentCharge: number;
+  threshold: number;
+  progressRatio: number;
+};
+
+export function calculateInspirationChargeState(
+  manualAcceptedCount: number,
+  hintsUsed: number,
+  threshold = INSPIRATION_CHARGE_THRESHOLD,
+): InspirationChargeState {
+  const safeThreshold = Math.max(1, Math.floor(threshold));
+  const remainingCharge = Math.max(0, manualAcceptedCount - safeThreshold * hintsUsed);
+  const availableHints = Math.floor(remainingCharge / safeThreshold);
+  const currentCharge = remainingCharge % safeThreshold;
+
+  return {
+    availableHints,
+    currentCharge,
+    threshold: safeThreshold,
+    progressRatio: currentCharge / safeThreshold,
+  };
+}
+
 export type TrainingLetter = (typeof TRAINING_LETTERS)[number];
+
+export const TRAINING_WORD_RICH_FALLBACK_BOARDS: Record<TrainingLetter, string> = {
+  Q: 'MARMNEAYOSLAQZXE',
+  X: 'MARMNEAYOSLAAZXE',
+  Z: 'MARMNEAYOSLAAZZE',
+  J: 'MARMNEAYOSLAJZXE',
+};
 
 export const LETTER_POINTS: Record<string, number> = {
   A: 1,
@@ -397,6 +434,29 @@ export function countBonuses(
     if (label) counts[label] += 1;
   }
   return counts;
+}
+
+export function isWordCountableInMode(word: string, mode: PracticeMode): boolean {
+  if (word.length < 2) return false;
+
+  switch (mode) {
+    case 'long-words-only-4-plus':
+      return word.length >= 4;
+    case 'arena-gladiator':
+      return word.length >= 5;
+    case 'arena-tight-rope':
+      return word.length === 4;
+    default:
+      return true;
+  }
+}
+
+export function filterCountableWordsForMode(words: string[], mode: PracticeMode): string[] {
+  return words.filter((word) => isWordCountableInMode(word, mode));
+}
+
+export function fallbackBoardForMode(mode: PracticeMode, trainingLetter: TrainingLetter = 'Q'): string {
+  return mode === 'training' ? TRAINING_WORD_RICH_FALLBACK_BOARDS[trainingLetter] : WORD_RICH_FALLBACK_BOARD;
 }
 
 export function formatRoute(path: number[]): string {

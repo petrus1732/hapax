@@ -1,6 +1,6 @@
 'use client';
 
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 import Tile from './tile';
 import { BonusOrNull, isAdjacent, letterPoints } from '@/app/lib/wordblitz';
 
@@ -33,6 +33,27 @@ interface SquareBoardProps {
   disabled?: boolean;
 }
 
+const GRID_GAP = 12;
+
+function activeTilesForPath(path: number[], tileCount: number): boolean[] {
+  const active = Array(tileCount).fill(false);
+  for (const index of path) active[index] = true;
+  return active;
+}
+
+function routePoints(path: number[], size: number, boardSize: number): string {
+  const tileSize = (boardSize - GRID_GAP * (size - 1)) / size;
+  return path
+    .map((index) => {
+      const row = Math.floor(index / size);
+      const column = index % size;
+      const x = column * (tileSize + GRID_GAP) + tileSize / 2;
+      const y = row * (tileSize + GRID_GAP) + tileSize / 2;
+      return `${x},${y}`;
+    })
+    .join(' ');
+}
+
 export default function SquareBoard({
   size,
   letters,
@@ -50,69 +71,71 @@ export default function SquareBoard({
 }: SquareBoardProps) {
   const boardSize = 288;
   const fontSize = (boardSize / size) * 0.5;
+  const tileCount = size * size;
   const [wordColor, setWordColor] = useState<string>('inherit');
   const [path, setPath] = useState<number[]>([]);
-  const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(size * size).fill(false));
+  const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(tileCount).fill(false));
+  const [isRecording, setIsRecording] = useState(false);
   const pathRef = useRef<number[]>(path);
   const isRecordingRef = useRef(false);
 
-  useEffect(() => {
-    const handleWindowMouseUp = () => {
-      handleMouseUp();
-    };
+  const clearActiveTiles = useCallback(() => {
+    setActiveTiles(Array(tileCount).fill(false));
+  }, [tileCount]);
 
-    window.addEventListener('mouseup', handleWindowMouseUp);
-    window.addEventListener('touchend', handleWindowMouseUp);
+  const cancelSelection = useCallback(() => {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    pathRef.current = [];
+    setPath([]);
+    clearActiveTiles();
+  }, [clearActiveTiles]);
 
-    return () => {
-      window.removeEventListener('mouseup', handleWindowMouseUp);
-      window.removeEventListener('touchend', handleWindowMouseUp);
-    };
-  });
+  const handleStart = useCallback(
+    (index: number) => {
+      if (disabled) return;
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      const newPath = [index];
+      setPath(newPath);
+      pathRef.current = newPath;
+      setActiveTiles(activeTilesForPath(newPath, tileCount));
+      setWordColor('inherit');
+    },
+    [disabled, tileCount],
+  );
 
-  useEffect(() => {
-    if (disabled) {
-      isRecordingRef.current = false;
-      setActiveTiles(Array(size * size).fill(false));
-    }
-  }, [disabled, size]);
+  const handleMove = useCallback(
+    (index: number) => {
+      if (!isRecordingRef.current || disabled) return;
 
-  const handleStart = (index: number) => {
-    if (disabled) return;
-    isRecordingRef.current = true;
-    const newPath = [index];
-    setPath(newPath);
-    pathRef.current = newPath;
-    setActiveTiles(activeTiles.map((_, idx) => idx === index));
-    setWordColor('inherit');
-  };
+      const currentPath = pathRef.current;
+      const lastId = currentPath.at(-1);
+      let nextPath = currentPath;
 
-  const handleMove = (index: number) => {
-    if (!isRecordingRef.current || disabled) return;
+      if (currentPath.length >= 2 && currentPath.at(-2) === index) {
+        nextPath = currentPath.slice(0, -1);
+      } else if (lastId !== undefined && isAdjacent(lastId, index, size)) {
+        if (currentPath.includes(index)) return;
+        nextPath = [...currentPath, index];
+      }
 
-    const currentPath = pathRef.current;
-    const lastId = currentPath.at(-1);
+      if (nextPath !== currentPath) {
+        setPath(nextPath);
+        pathRef.current = nextPath;
+        setActiveTiles(activeTilesForPath(nextPath, tileCount));
+      }
+    },
+    [disabled, size, tileCount],
+  );
 
-    if (currentPath.length >= 2 && currentPath.at(-2) === index) {
-      const nextPath = currentPath.slice(0, -1);
-      setPath(nextPath);
-      pathRef.current = nextPath;
-      setActiveTiles(activeTiles.map((active, idx) => (idx === lastId ? false : active)));
-    } else if (lastId !== undefined && isAdjacent(lastId, index, size)) {
-      if (currentPath.includes(index)) return;
-
-      const nextPath = [...currentPath, index];
-      setPath(nextPath);
-      pathRef.current = nextPath;
-      setActiveTiles(activeTiles.map((active, idx) => active || idx === index));
-    }
-  };
-
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     if (!isRecordingRef.current) return;
 
     isRecordingRef.current = false;
+    setIsRecording(false);
     const currentPath = pathRef.current;
+    clearActiveTiles();
 
     if (currentPath.length >= minLength) {
       const word = currentPath.map((index) => letters[index]).join('');
@@ -121,27 +144,56 @@ export default function SquareBoard({
 
       if (onSubmitTerm) {
         const result = onSubmitTerm({ word, path: currentPath, isDictionaryWord, isAlreadyFound });
-        setWordColor(result.color ?? (result.accepted ? 'green' : isDictionaryWord ? 'yellow' : 'red'));
+        setWordColor(result.color ?? (result.accepted ? 'inherit' : isDictionaryWord ? 'yellow' : 'red'));
       } else if (isDictionaryWord) {
         if (isAlreadyFound) setWordColor('yellow');
         else {
           setSwiped((arr) => ({ ...arr, [word]: true }));
-          setWordColor('green');
+          setWordColor('inherit');
         }
       } else {
         setWordColor('red');
       }
     }
+  }, [clearActiveTiles, letters, minLength, onSubmitTerm, setSwiped, swiped, validWords]);
 
-    setActiveTiles(Array(size * size).fill(false));
-  };
+  useEffect(() => {
+    const finishSelection = () => handleMouseUp();
+    const cancelCurrentSelection = () => cancelSelection();
+
+    window.addEventListener('mouseup', finishSelection);
+    window.addEventListener('touchend', finishSelection);
+    window.addEventListener('pointerup', finishSelection);
+    window.addEventListener('touchcancel', cancelCurrentSelection);
+    window.addEventListener('pointercancel', cancelCurrentSelection);
+    window.addEventListener('blur', cancelCurrentSelection);
+
+    return () => {
+      window.removeEventListener('mouseup', finishSelection);
+      window.removeEventListener('touchend', finishSelection);
+      window.removeEventListener('pointerup', finishSelection);
+      window.removeEventListener('touchcancel', cancelCurrentSelection);
+      window.removeEventListener('pointercancel', cancelCurrentSelection);
+      window.removeEventListener('blur', cancelCurrentSelection);
+    };
+  }, [cancelSelection, handleMouseUp]);
+
+  useEffect(() => {
+    if (disabled) cancelSelection();
+  }, [cancelSelection, disabled]);
+
+  useEffect(() => {
+    setActiveTiles((current) => (current.length === tileCount ? current : Array(tileCount).fill(false)));
+  }, [tileCount]);
 
   const currentWord = path.map((id) => letters[id]).join('');
   const isClickable = wordColor === 'green' || wordColor === 'yellow';
-  const highlighted = new Set(highlightedRoute);
+  const routePath = isRecording ? path : highlightedRoute;
+  const highlighted = new Set(isRecording ? [] : highlightedRoute);
+  const routePolylinePoints = routePath.length >= 2 ? routePoints(routePath, size, boardSize) : '';
 
   return (
-    <div>
+    <div className="wb-square-board">
       <div className="mb-2 flex h-10 items-center justify-center">
         <div
           style={{
@@ -163,13 +215,30 @@ export default function SquareBoard({
         style={{
           width: `${boardSize}px`,
           height: `${boardSize}px`,
-          gridTemplateColumns: `repeat(${size}, 1fr)`,
+          gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${size}, minmax(0, 1fr))`,
         }}
-        className="mx-auto grid gap-3"
+        className="wb-board-grid relative isolate mx-auto grid shrink-0 gap-3"
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
       >
-        {Array(size * size)
+        {routePolylinePoints && (
+          <svg
+            aria-hidden="true"
+            className="wb-route-overlay absolute inset-0"
+            width={boardSize}
+            height={boardSize}
+            viewBox={`0 0 ${boardSize} ${boardSize}`}
+          >
+            <polyline
+              className={
+                isRecording ? 'wb-route-line wb-route-line-active' : 'wb-route-line wb-route-line-selected'
+              }
+              points={routePolylinePoints}
+            />
+          </svg>
+        )}
+        {Array(tileCount)
           .fill(null)
           .map((_, id) => (
             <Tile

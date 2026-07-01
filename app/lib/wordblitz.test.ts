@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BLITZ_SECONDS,
   BOARD_SIZE,
+  MAX_BOARD_ROLL_ATTEMPTS,
+  MIN_PLAYABLE_WORDS,
   ROUND_BONUS_SPECS,
   ROUND_SECONDS,
   TRAINING_LETTERS,
   bestRouteForWord,
   bonusLabel,
   calculatePathScore,
+  calculateInspirationChargeState,
   countBonuses,
+  fallbackBoardForMode,
+  filterCountableWordsForMode,
   findRoutesForWord,
   formatRoute,
   generateBoardWithWord,
@@ -39,6 +44,8 @@ describe('Word Blitz constants and base helpers', () => {
     expect(ROUND_SECONDS).toBe(80);
     expect(BLITZ_SECONDS).toBe(30);
     expect(TRAINING_LETTERS).toEqual(['Q', 'X', 'Z', 'J']);
+    expect(MIN_PLAYABLE_WORDS).toBe(90);
+    expect(MAX_BOARD_ROLL_ATTEMPTS).toBeGreaterThanOrEqual(100);
   });
 
   it('uses the English Word Blitz/Scrabble-like point table and a safe fallback', () => {
@@ -73,6 +80,58 @@ describe('Word Blitz constants and base helpers', () => {
     expect(wordMultiplier('tw')).toBe(3);
     expect(wordMultiplier('qw')).toBe(4);
     expect(wordMultiplier('tl')).toBe(1);
+  });
+
+  it('calculates inspiration availability as floor((manual words - 5 * used hints) / 5) with charge remainder', () => {
+    expect(calculateInspirationChargeState(0, 0)).toEqual({
+      availableHints: 0,
+      currentCharge: 0,
+      threshold: 5,
+      progressRatio: 0,
+    });
+    expect(calculateInspirationChargeState(4, 0)).toEqual({
+      availableHints: 0,
+      currentCharge: 4,
+      threshold: 5,
+      progressRatio: 0.8,
+    });
+    expect(calculateInspirationChargeState(12, 0)).toEqual({
+      availableHints: 2,
+      currentCharge: 2,
+      threshold: 5,
+      progressRatio: 0.4,
+    });
+    expect(calculateInspirationChargeState(12, 1)).toEqual({
+      availableHints: 1,
+      currentCharge: 2,
+      threshold: 5,
+      progressRatio: 0.4,
+    });
+    expect(calculateInspirationChargeState(12, 2)).toEqual({
+      availableHints: 0,
+      currentCharge: 2,
+      threshold: 5,
+      progressRatio: 0.4,
+    });
+  });
+
+  it('filters countable words according to event and arena rules', () => {
+    const sample = ['A', 'TO', 'CAT', 'CART', 'CARES', 'READING'];
+
+    expect(filterCountableWordsForMode(sample, 'normal')).toEqual(['TO', 'CAT', 'CART', 'CARES', 'READING']);
+    expect(filterCountableWordsForMode(sample, 'long-words-only-4-plus')).toEqual([
+      'CART',
+      'CARES',
+      'READING',
+    ]);
+    expect(filterCountableWordsForMode(sample, 'arena-gladiator')).toEqual(['CARES', 'READING']);
+    expect(filterCountableWordsForMode(sample, 'arena-tight-rope')).toEqual(['CART']);
+  });
+
+  it('provides word-rich fallback boards, including rare-letter training variants', () => {
+    expect(fallbackBoardForMode('normal')).toHaveLength(16);
+    expect(fallbackBoardForMode('training', 'Q')).toContain('Q');
+    expect(fallbackBoardForMode('training', 'J')).toContain('J');
   });
 });
 
