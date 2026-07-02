@@ -1,4 +1,4 @@
-name: deploy
+name: Deploy static Word Blitz practice app
 
 on:
   push:
@@ -15,6 +15,9 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,7 +31,7 @@ jobs:
         with:
           version: 11.9.0
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -37,8 +40,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Remove server-only and dynamic routes for static export
+        run: |
+          rm -rf app/api
+          rm -rf app/boards
+          rm -rf app/create
+          rm -f middleware.ts
+
+      - name: Build static site
         run: pnpm build
+
+      - name: Add .nojekyll
+        run: touch out/.nojekyll
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
