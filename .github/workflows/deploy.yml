@@ -40,6 +40,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Force static GitHub Pages Next config
+        run: |
+          cat > next.config.mjs <<'EOF'
+          /** @type {import('next').NextConfig} */
+          const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
+          const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'hapax';
+
+          const nextConfig = {
+            output: 'export',
+            trailingSlash: true,
+            images: {
+              unoptimized: true,
+            },
+            basePath: isGithubActions ? `/${repoName}` : '',
+            assetPrefix: isGithubActions ? `/${repoName}/` : '',
+          };
+
+          export default nextConfig;
+          EOF
+
       - name: Patch app for static GitHub Pages export
         run: |
           rm -rf app/api
@@ -103,35 +123,52 @@ jobs:
 
           python <<'PY'
           from pathlib import Path
+          import re
+          import sys
 
           path = Path("app/random-board/random-board-client.tsx")
           text = path.read_text()
 
-          old = """  const getWordlist = async () => {
-            const response = await fetch('/api/wordlist');
-            if (!response.ok) throw new Error('Failed to get wordlist');
-            return response.json() as Promise<{ message: string[] }>;
-          };
-          """
-
-          new = """  const getWordlist = async () => {
+          replacement = """  const getWordlist = async () => {
             const response = await fetch('../CSW2019.txt');
             if (!response.ok) throw new Error('Failed to get wordlist');
             const text = await response.text();
             return {
               message: text
-                .split(/\\\\r?\\\\n/)
+                .split(/\\r?\\n/)
                 .map((word) => word.trim())
                 .filter(Boolean),
             };
           };
-          """
 
-          if old not in text:
-            raise SystemExit("Could not find getWordlist block to patch.")
+          useEffect"""
 
-          path.write_text(text.replace(old, new))
+          if "CSW2019.txt" in text:
+            print("getWordlist already uses static CSW2019.txt.")
+          else:
+            pattern = r"  const getWordlist = async \(\) => \{.*?\n  \};\n\n  useEffect"
+            patched, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+
+            if count != 1:
+              print("Could not patch getWordlist. Showing nearby context:", file=sys.stderr)
+              marker = "getWordlist"
+              idx = text.find(marker)
+              if idx >= 0:
+                print(text[max(0, idx - 400):idx + 1200], file=sys.stderr)
+              else:
+                print("No getWordlist marker found.", file=sys.stderr)
+              sys.exit(1)
+
+            path.write_text(patched)
+            print("Patched getWordlist to load public/CSW2019.txt.")
+
           PY
+
+      - name: Show remaining server-action markers
+        run: |
+          grep -R "use server\|action={async\|action={formAction}" -n app \
+            --include="*.ts" \
+            --include="*.tsx" || true
 
       - name: Build static site
         run: pnpm build
