@@ -135,7 +135,7 @@ jobs:
             const text = await response.text();
             return {
               message: text
-                .split(/\\r?\\n/)
+                .split(String.fromCharCode(10))
                 .map((word) => word.trim())
                 .filter(Boolean),
             };
@@ -161,7 +161,6 @@ jobs:
 
             path.write_text(patched)
             print("Patched getWordlist to load public/CSW2019.txt.")
-
           PY
 
       - name: Show remaining server-action markers
