@@ -40,12 +40,98 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Remove server-only and dynamic routes for static export
+      - name: Patch app for static GitHub Pages export
         run: |
           rm -rf app/api
           rm -rf app/boards
           rm -rf app/create
+          rm -rf app/login
+          rm -rf app/dictionary
           rm -f middleware.ts
+          rm -f app/lib/actions.ts
+          rm -f app/lib/dictionary.ts
+          rm -f app/lib/getTrie.ts
+          rm -f app/ui/top-bar.tsx
+          rm -f app/ui/login-form.tsx
+
+          cat > app/layout.tsx <<'EOF'
+          import type { Metadata } from 'next';
+          import './ui/colors.css';
+          import './ui/globals.css';
+
+          export const metadata: Metadata = {
+            title: 'HaPaX Word Blitz Practice Lab',
+            description: 'Word Blitz practice boards with events, arena rules, and rare-letter training modes.',
+          };
+
+          export default function RootLayout({
+            children,
+          }: Readonly<{
+            children: React.ReactNode;
+          }>) {
+            return (
+              <html lang="en" suppressHydrationWarning>
+                <body className="font-sans">
+                  {children}
+                </body>
+              </html>
+            );
+          }
+          EOF
+
+          cat > app/page.tsx <<'EOF'
+          import Link from 'next/link';
+
+          export default function Home() {
+            return (
+              <main className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 p-8 text-slate-950 dark:bg-neutral-950 dark:text-neutral-50">
+                <div className="grid w-full max-w-sm gap-4 text-center">
+                  <Link
+                    href="/random-board"
+                    className="flex min-h-20 grow flex-col items-center justify-center gap-1 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xl font-black text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100"
+                  >
+                    Word Blitz Practice Lab
+                    <span className="text-sm font-medium opacity-75">
+                      practice, events, arena, and training modes
+                    </span>
+                  </Link>
+                </div>
+              </main>
+            );
+          }
+          EOF
+
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("app/random-board/random-board-client.tsx")
+          text = path.read_text()
+
+          old = """  const getWordlist = async () => {
+            const response = await fetch('/api/wordlist');
+            if (!response.ok) throw new Error('Failed to get wordlist');
+            return response.json() as Promise<{ message: string[] }>;
+          };
+          """
+
+          new = """  const getWordlist = async () => {
+            const response = await fetch('../CSW2019.txt');
+            if (!response.ok) throw new Error('Failed to get wordlist');
+            const text = await response.text();
+            return {
+              message: text
+                .split(/\\\\r?\\\\n/)
+                .map((word) => word.trim())
+                .filter(Boolean),
+            };
+          };
+          """
+
+          if old not in text:
+            raise SystemExit("Could not find getWordlist block to patch.")
+
+          path.write_text(text.replace(old, new))
+          PY
 
       - name: Build static site
         run: pnpm build
