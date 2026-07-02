@@ -33,6 +33,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 type ArenaSubmode = 'arena-gladiator' | 'arena-tight-rope' | 'arena-8-plus-superior';
 type RoundPhase = 'idle' | 'countdown' | 'playing' | 'finished';
 
+const ROUTE_ANIMATION_STEP_MS = 1000 / 6;
+
 type FoundWord = {
   word: string;
   path: number[];
@@ -125,6 +127,22 @@ function waitForNextFrame(): Promise<void> {
   });
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function vibrateForNewWord(): void {
+  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
+
+  try {
+    navigator.vibrate(35);
+  } catch {
+    // Vibration is best-effort only; unsupported browsers/devices can ignore it.
+  }
+}
+
 export default function RandomBoardClient() {
   const [mode, setMode] = useState<PracticeMode>('practice');
   const [arenaMode, setArenaMode] = useState<ArenaSubmode>('arena-gladiator');
@@ -153,6 +171,7 @@ export default function RandomBoardClient() {
   const [statusMessage, setStatusMessage] = useState('Choose a mode, then start a board.');
   const [highlightedRoute, setHighlightedRoute] = useState<number[]>([]);
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
+  const [isInspirationAnimating, setIsInspirationAnimating] = useState(false);
 
   const activeMode = mode;
   const effectiveRound: RoundMode =
@@ -412,7 +431,7 @@ export default function RandomBoardClient() {
       if (!isDictionaryWord) return { accepted: false, color: 'red' };
       if (isAlreadyFound) {
         setStatusMessage(`${word} was already found.`);
-        return { accepted: false, color: 'inherit' };
+        return { accepted: false, color: 'yellow' };
       }
 
       if (activeMode === 'long-words-only-4-plus' && word.length < 4) {
@@ -437,6 +456,7 @@ export default function RandomBoardClient() {
       });
 
       addFoundWord({ word, path, score });
+      vibrateForNewWord();
       setManualAcceptedCount((current) => current + 1);
 
       if (activeMode === 'blitz') {
@@ -457,7 +477,11 @@ export default function RandomBoardClient() {
         });
       }
 
-      return { accepted: true, color: 'inherit' };
+      return {
+        accepted: true,
+        color: 'green',
+        flashPath: lengthBonus5Plus && word.length >= 5,
+      };
     },
     [
       activeMode,
@@ -474,8 +498,8 @@ export default function RandomBoardClient() {
     ],
   );
 
-  const useInspirationHint = useCallback(() => {
-    if (!board || availableHints <= 0) return;
+  const useInspirationHint = useCallback(async () => {
+    if (!board || availableHints <= 0 || isInspirationAnimating) return;
     const candidates = flatWords.filter((word) => word.length >= 5 && !foundWords[word]);
     if (candidates.length === 0) {
       setHintsUsed((current) => current + 1);
@@ -491,13 +515,32 @@ export default function RandomBoardClient() {
 
     if (!bestRoute) return;
     addFoundWord({ word, path: bestRoute.path, score: bestRoute.score, inspired: true });
-    setHighlightedRoute(bestRoute.path);
+    setIsInspirationAnimating(true);
+
+    for (let length = 1; length <= bestRoute.path.length; length += 1) {
+      setHighlightedRoute(bestRoute.path.slice(0, length));
+      await wait(ROUTE_ANIMATION_STEP_MS);
+    }
+
+    await wait(ROUTE_ANIMATION_STEP_MS);
+    setHighlightedRoute([]);
+    setIsInspirationAnimating(false);
     setSelectedRouteInfo(
       `${word} · swipe ${formatRoute(bestRoute.path)}${bestRoute.score ? ` · ${bestRoute.score} pts` : ''}`,
     );
     setHintsUsed((current) => current + 1);
     setStatusMessage(`Inspiration found ${word}${bestRoute.score ? ` for ${bestRoute.score} points` : ''}.`);
-  }, [addFoundWord, availableHints, board, bonuses, flatWords, foundWords, isPractice, lengthBonus5Plus]);
+  }, [
+    addFoundWord,
+    availableHints,
+    board,
+    bonuses,
+    flatWords,
+    foundWords,
+    isInspirationAnimating,
+    isPractice,
+    lengthBonus5Plus,
+  ]);
 
   useEffect(() => {
     if (
@@ -733,8 +776,10 @@ export default function RandomBoardClient() {
           <div className="wb-round-panel rounded-2xl border border-gray-200 bg-white/80 p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70 sm:p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-sm uppercase tracking-wide text-gray-500">{modeTitle(activeMode)}</div>
-                <div className="text-xl font-black">
+                <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-zinc-400">
+                  {modeTitle(activeMode)}
+                </div>
+                <div className="text-xl font-black text-gray-950 dark:text-zinc-50">
                   {activeMode === 'quadruple-bonus'
                     ? 'R4'
                     : isRoundMode(activeMode)
@@ -745,7 +790,7 @@ export default function RandomBoardClient() {
               </div>
               <div className="flex flex-wrap gap-2 text-sm">
                 {hasTimer && (
-                  <span className="rounded-full bg-slate-100 px-3 py-1 font-bold dark:bg-zinc-800">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 font-bold text-slate-950 dark:bg-zinc-800 dark:text-zinc-50">
                     ⏱ {formatTime(timeLeft)}s
                   </span>
                 )}
@@ -755,7 +800,7 @@ export default function RandomBoardClient() {
                   </span>
                 )}
                 <button
-                  className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                  className="rounded-full bg-gray-100 px-3 py-1 font-bold text-gray-950 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
                   onClick={() => setOpenWordList(true)}
                 >
                   Words {foundWordList.length}/{wordListTotal}
@@ -768,7 +813,7 @@ export default function RandomBoardClient() {
                   {isRollingBoard ? 'Rolling...' : 'Reroll'}
                 </button>
                 <button
-                  className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                  className="rounded-full bg-gray-100 px-3 py-1 font-bold text-gray-950 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
                   onClick={leaveBoard}
                 >
                   Modes
@@ -788,7 +833,7 @@ export default function RandomBoardClient() {
                 showTileScores={!isPractice}
                 evolutionLevels={isEvolution ? evolutionLevels : []}
                 highlightedRoute={highlightedRoute}
-                disabled={!canSwipe}
+                disabled={!canSwipe || isInspirationAnimating}
                 onSubmitTerm={handleSubmitTerm}
                 onWordClick={selectWordRoute}
               />
@@ -825,7 +870,9 @@ export default function RandomBoardClient() {
                         : 'bg-gray-200 text-gray-500 dark:bg-zinc-800'
                     }`}
                     onClick={useInspirationHint}
-                    disabled={availableHints <= 0 || finished || roundPhase !== 'playing'}
+                    disabled={
+                      availableHints <= 0 || finished || roundPhase !== 'playing' || isInspirationAnimating
+                    }
                   >
                     Use inspiration × {availableHints}
                   </button>
@@ -956,9 +1003,9 @@ export default function RandomBoardClient() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-gray-100 p-3 dark:bg-zinc-900">
-      <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="text-lg font-black">{value}</div>
+    <div className="rounded-xl bg-gray-100 p-3 text-gray-950 dark:bg-zinc-900 dark:text-zinc-50">
+      <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-zinc-400">{label}</div>
+      <div className="text-lg font-black text-gray-950 dark:text-zinc-50">{value}</div>
     </div>
   );
 }

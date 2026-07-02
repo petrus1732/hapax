@@ -9,6 +9,7 @@ interface TileProps {
   onMove: (index: number) => void;
   isActive: boolean;
   isRouteHighlighted?: boolean;
+  isRouteFlashing?: boolean;
   bonus?: BonusOrNull;
   points?: number;
   showPoints?: boolean;
@@ -43,6 +44,7 @@ export default function Tile({
   onMove,
   isActive,
   isRouteHighlighted = false,
+  isRouteFlashing = false,
   bonus = null,
   points = 1,
   showPoints = false,
@@ -84,7 +86,8 @@ export default function Tile({
     'wb-tile relative z-10 select-none rounded-md flex justify-center items-center w-full h-full shadow-sm transition-all',
     bonusFrameClass(bonus),
     isActive ? 'wb-tile-active' : '',
-    isRouteHighlighted && !isActive ? 'wb-tile-route' : '',
+    isRouteFlashing && !isActive ? 'wb-tile-flash' : '',
+    isRouteHighlighted && !isActive && !isRouteFlashing ? 'wb-tile-route' : '',
     evolutionLevel >= 3 && !isActive ? 'wb-tile-evolution-max' : '',
     disabled ? 'cursor-default' : 'cursor-pointer',
   ]

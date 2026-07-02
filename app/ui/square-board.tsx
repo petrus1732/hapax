@@ -15,6 +15,7 @@ export type SubmitResult = {
   accepted: boolean;
   color?: string;
   keepPath?: boolean;
+  flashPath?: boolean;
 };
 
 interface SquareBoardProps {
@@ -75,13 +76,27 @@ export default function SquareBoard({
   const [wordColor, setWordColor] = useState<string>('inherit');
   const [path, setPath] = useState<number[]>([]);
   const [activeTiles, setActiveTiles] = useState<boolean[]>(Array(tileCount).fill(false));
+  const [flashTiles, setFlashTiles] = useState<boolean[]>(Array(tileCount).fill(false));
   const [isRecording, setIsRecording] = useState(false);
   const pathRef = useRef<number[]>(path);
   const isRecordingRef = useRef(false);
+  const flashTimerRef = useRef<number | null>(null);
 
   const clearActiveTiles = useCallback(() => {
     setActiveTiles(Array(tileCount).fill(false));
   }, [tileCount]);
+
+  const flashCurrentPath = useCallback(
+    (currentPath: number[]) => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+      setFlashTiles(activeTilesForPath(currentPath, tileCount));
+      flashTimerRef.current = window.setTimeout(() => {
+        setFlashTiles(Array(tileCount).fill(false));
+        flashTimerRef.current = null;
+      }, 167);
+    },
+    [tileCount],
+  );
 
   const cancelSelection = useCallback(() => {
     isRecordingRef.current = false;
@@ -144,18 +159,19 @@ export default function SquareBoard({
 
       if (onSubmitTerm) {
         const result = onSubmitTerm({ word, path: currentPath, isDictionaryWord, isAlreadyFound });
-        setWordColor(result.color ?? (result.accepted ? 'inherit' : isDictionaryWord ? 'yellow' : 'red'));
+        if (result.flashPath) flashCurrentPath(currentPath);
+        setWordColor(result.color ?? (result.accepted ? 'green' : isDictionaryWord ? 'yellow' : 'red'));
       } else if (isDictionaryWord) {
         if (isAlreadyFound) setWordColor('yellow');
         else {
           setSwiped((arr) => ({ ...arr, [word]: true }));
-          setWordColor('inherit');
+          setWordColor('green');
         }
       } else {
         setWordColor('red');
       }
     }
-  }, [clearActiveTiles, letters, minLength, onSubmitTerm, setSwiped, swiped, validWords]);
+  }, [clearActiveTiles, flashCurrentPath, letters, minLength, onSubmitTerm, setSwiped, swiped, validWords]);
 
   useEffect(() => {
     const finishSelection = () => handleMouseUp();
@@ -183,7 +199,14 @@ export default function SquareBoard({
   }, [cancelSelection, disabled]);
 
   useEffect(() => {
+    return () => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     setActiveTiles((current) => (current.length === tileCount ? current : Array(tileCount).fill(false)));
+    setFlashTiles((current) => (current.length === tileCount ? current : Array(tileCount).fill(false)));
   }, [tileCount]);
 
   const currentWord = path.map((id) => letters[id]).join('');
@@ -250,6 +273,7 @@ export default function SquareBoard({
               onMove={handleMove}
               isActive={activeTiles[id]}
               isRouteHighlighted={highlighted.has(id)}
+              isRouteFlashing={flashTiles[id]}
               bonus={bonuses[id] ?? null}
               points={letterPoints(letters[id])}
               showPoints={showTileScores}
