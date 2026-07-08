@@ -3,7 +3,7 @@
 import SquareBoard, { SubmittedTerm, SubmitResult } from '@/app/ui/square-board';
 import { vibrateForNewWord } from '@/app/ui/wordblitz-feedback';
 import { Board } from '@/app/lib/definitions';
-import { useSession } from 'next-auth/react';
+import { useClientSession } from '@/app/lib/use-client-session';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
 import {
@@ -181,7 +181,7 @@ export default function RandomBoardClient() {
   const [persistenceMessage, setPersistenceMessage] = useState<string>('');
   const [playRecordId, setPlayRecordId] = useState<string | null>(null);
   const [completedRecordId, setCompletedRecordId] = useState<string | null>(null);
-  const { data: session } = useSession();
+  const { data: session } = useClientSession();
 
   const activeMode = mode;
   const effectiveRound: RoundMode =
@@ -532,7 +532,12 @@ export default function RandomBoardClient() {
       fetch('/api/profile/words', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: entry.word, path: entry.path, score: entry.score, inspired: entry.inspired }),
+        body: JSON.stringify({
+          word: entry.word,
+          path: entry.path,
+          score: entry.score,
+          inspired: entry.inspired,
+        }),
       }).catch(() => undefined);
     },
     [session?.user],
@@ -725,7 +730,6 @@ export default function RandomBoardClient() {
       trainingSeedWord: trainingSeedWord ?? board.trainingSeedWord ?? null,
     };
   };
-
 
   const saveRoundProgress = useCallback(
     async (completed: boolean) => {

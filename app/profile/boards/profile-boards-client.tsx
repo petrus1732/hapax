@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useClientSession } from '@/app/lib/use-client-session';
 import SquareBoard from '@/app/ui/square-board';
 import { parseBonuses } from '@/app/lib/board-storage';
 import { BOARD_SIZE, BonusOrNull, countBonuses, groupWordsByLength } from '@/app/lib/wordblitz';
@@ -66,7 +66,6 @@ function parseFoundWords(value?: string | null): FoundWordRecord[] {
   }
 }
 
-
 function formatDate(value?: string | null) {
   if (!value) return '—';
   const date = new Date(value);
@@ -74,7 +73,7 @@ function formatDate(value?: string | null) {
 }
 
 export default function ProfileBoardsClient() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useClientSession();
   const [boards, setBoards] = useState<ProfileBoardRow[]>([]);
   const [selected, setSelected] = useState<ProfileBoardRow | null>(null);
   const [message, setMessage] = useState('Loading your boards...');
@@ -159,7 +158,9 @@ export default function ProfileBoardsClient() {
                   >
                     <td className="px-3 py-3">
                       <div className="font-bold">{board.board_name}</div>
-                      <div className="font-mono text-xs text-gray-500 dark:text-zinc-400">{board.letters}</div>
+                      <div className="font-mono text-xs text-gray-500 dark:text-zinc-400">
+                        {board.letters}
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {board.source_mode}
@@ -227,7 +228,9 @@ export default function ProfileBoardsClient() {
                         .map((item) => (
                           <span key={item.word} className="rounded-full bg-white px-2 py-1 dark:bg-zinc-950">
                             {item.word}
-                            {item.inspired ? <span className="ml-1 text-xs text-purple-500">hint</span> : null}
+                            {item.inspired ? (
+                              <span className="ml-1 text-xs text-purple-500">hint</span>
+                            ) : null}
                           </span>
                         ))}
                     </div>

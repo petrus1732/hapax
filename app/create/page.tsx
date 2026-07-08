@@ -8,7 +8,7 @@ import { createBoard } from '../lib/actions';
 import { useState, useEffect } from 'react';
 import { findWords } from '../lib/find-words';
 import { Trie } from '../lib/trie';
-import { useSession } from 'next-auth/react';
+import { useClientSession } from '@/app/lib/use-client-session';
 
 export default function Create() {
   const boardSizes = [3, 4, 5, 6, 7, 8, 9, 10];
@@ -18,7 +18,7 @@ export default function Create() {
   const [wordlist, setWordlist] = useState<string[]>([]);
   const [words, setWords] = useState<string[][]>([]);
   const [trie, setTrie] = useState<Trie | null>(null);
-  const { data: session, status } = useSession();
+  const { data: session, status } = useClientSession();
 
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');

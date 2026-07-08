@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useClientSession } from '@/app/lib/use-client-session';
 import SquareBoard from '@/app/ui/square-board';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
@@ -23,7 +23,7 @@ type RememberedBoardRow = {
 };
 
 export default function RememberedBoardsClient() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useClientSession();
   const [boards, setBoards] = useState<RememberedBoardRow[]>([]);
   const [selected, setSelected] = useState<RememberedBoardRow | null>(null);
   const [swiped, setSwiped] = useState<Record<string, boolean>>({});
