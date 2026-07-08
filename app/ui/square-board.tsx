@@ -216,8 +216,7 @@ export default function SquareBoard({
   const isClickable = wordColor === 'green' || wordColor === 'yellow';
   const routePath = isRecording ? path : highlightedRoute;
   const highlighted = new Set(isRecording ? [] : highlightedRoute);
-  const routePolylinePoints =
-    routePath.length >= 2 ? routePoints(routePath, size, boardSize, metrics.gridGap) : '';
+  const routePolylinePoints = routePath.length >= 2 ? routePoints(routePath, size, boardSize, metrics.gridGap) : '';
 
   return (
     <div className="wb-square-board">

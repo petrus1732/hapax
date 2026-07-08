@@ -1,8 +1,8 @@
 import ThemeSwitch from './theme-switch';
 import { Button } from './button';
-import { auth } from '@/app/lib/auth';
+import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import { signOut } from '@/app/lib/auth';
+import { signOut } from '@/auth';
 import { HomeIcon, BookOpenIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 

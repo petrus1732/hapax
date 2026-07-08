@@ -3,9 +3,9 @@ import { number, z } from 'zod';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { signIn } from '@/app/lib/auth';
+import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
-import { auth } from '@/app/lib/auth';
+import { auth } from '@/auth';
 
 const BaseFormSchema = z.object({
   id: z.string(),
