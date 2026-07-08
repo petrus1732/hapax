@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { auth } from '@/app/lib/auth';
 import { serializeBonuses, validatePersistedBoardPayload } from '@/app/lib/board-storage';
+import { currentUserKey, sessionUserName } from '@/app/lib/profile-storage';
 
 async function ensureRememberedBoardsTable() {
   await sql`
@@ -24,9 +25,6 @@ async function ensureRememberedBoardsTable() {
   await sql`CREATE INDEX IF NOT EXISTS remembered_boards_user_email_idx ON remembered_boards (user_email)`;
 }
 
-function currentUserKey(session: Awaited<ReturnType<typeof auth>>) {
-  return session?.user?.email ?? session?.user?.name ?? null;
-}
 
 export async function GET() {
   try {
@@ -79,7 +77,7 @@ export async function POST(request: NextRequest) {
       VALUES (
         ${id},
         ${userKey},
-        ${session?.user?.name ?? null},
+        ${sessionUserName(session)},
         ${payload.boardName},
         ${payload.size},
         ${payload.letters},

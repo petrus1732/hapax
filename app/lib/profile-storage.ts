@@ -5,6 +5,26 @@ import { normalizeBonuses, serializeBonuses } from './board-storage';
 
 export type AuthSession = Awaited<ReturnType<typeof auth>>;
 
+type SessionUserLike = {
+  name?: string | null;
+  email?: string | null;
+};
+
+export function sessionUser(session: unknown): SessionUserLike | null {
+  if (!session || typeof session !== 'object') return null;
+  const user = (session as { user?: unknown }).user;
+  if (!user || typeof user !== 'object') return null;
+  return user as SessionUserLike;
+}
+
+export function sessionUserName(session: unknown) {
+  return sessionUser(session)?.name ?? null;
+}
+
+export function sessionUserEmail(session: unknown) {
+  return sessionUser(session)?.email ?? null;
+}
+
 export type FoundWordRecord = {
   word: string;
   path?: number[];
@@ -32,8 +52,9 @@ export type RoundRecordPayload = {
   subtheme?: string | null;
 };
 
-export function currentUserKey(session: AuthSession) {
-  return session?.user?.email ?? session?.user?.name ?? null;
+export function currentUserKey(session: unknown) {
+  const user = sessionUser(session);
+  return user?.email ?? user?.name ?? null;
 }
 
 export function normalizeFoundWords(value: unknown): FoundWordRecord[] {
@@ -179,7 +200,7 @@ export async function upsertDictionaryWords(
   for (const item of unique.values()) {
     await sql`
       INSERT INTO user_word_records (user_email, user_name, word, first_seen, last_seen, times_found, best_score)
-      VALUES (${userKey}, ${session?.user?.name ?? null}, ${item.word}, ${now}, ${now}, 1, ${Math.max(0, Math.floor(item.score ?? 0))})
+      VALUES (${userKey}, ${sessionUserName(session)}, ${item.word}, ${now}, ${now}, 1, ${Math.max(0, Math.floor(item.score ?? 0))})
       ON CONFLICT (user_email, word)
       DO UPDATE SET
         user_name = EXCLUDED.user_name,

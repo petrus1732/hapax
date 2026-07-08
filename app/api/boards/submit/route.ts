@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { auth } from '@/app/lib/auth';
 import { serializeBonuses, validatePersistedBoardPayload } from '@/app/lib/board-storage';
+import { sessionUserEmail, sessionUserName } from '@/app/lib/profile-storage';
 
 async function ensureBoardMetadataColumns() {
   await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS bonuses TEXT`;
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     const payload = validatePersistedBoardPayload(await request.json());
-    const author = session?.user?.name ?? session?.user?.email ?? 'anonymous';
+    const author = sessionUserName(session) ?? sessionUserEmail(session) ?? 'anonymous';
     const date = new Date().toISOString().split('T')[0];
 
     await ensureBoardMetadataColumns();

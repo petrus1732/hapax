@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import dictionary from '@/app/lib/dictionary.json';
 import { auth } from '@/app/lib/auth';
-import { currentUserKey, ensureProfileTables } from '@/app/lib/profile-storage';
+import { currentUserKey, ensureProfileTables, sessionUserEmail, sessionUserName } from '@/app/lib/profile-storage';
 
 type WordRow = {
   word: string;
@@ -185,8 +185,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       user: {
-        name: session?.user?.name ?? null,
-        email: session?.user?.email ?? null,
+        name: sessionUserName(session),
+        email: sessionUserEmail(session),
       },
       counts: {
         playedBoards: Number(playCount.rows[0]?.count ?? 0),

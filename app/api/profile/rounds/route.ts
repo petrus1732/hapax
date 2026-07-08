@@ -4,6 +4,7 @@ import { auth } from '@/app/lib/auth';
 import {
   currentUserKey,
   ensureProfileTables,
+  sessionUserName,
   roundRecordToSqlFields,
   upsertDictionaryWords,
   validateRoundRecordPayload,
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
         VALUES (
           ${id},
           ${userKey},
-          ${session?.user?.name ?? null},
+          ${sessionUserName(session)},
           ${fields.boardName},
           ${fields.size},
           ${fields.letters},
