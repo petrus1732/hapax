@@ -54,9 +54,7 @@ function formatDate(value?: string | null) {
 function BestCard({ title, round, empty }: { title: string; round: BestRound | null; empty: string }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">
-        {title}
-      </div>
+      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">{title}</div>
       {!round ? (
         <div className="mt-3 text-sm text-gray-500 dark:text-zinc-400">{empty}</div>
       ) : (
@@ -206,8 +204,7 @@ export default function ProfileClient() {
         <div className="rounded-3xl border border-gray-200 bg-white/80 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <h2 className="text-2xl font-black">Dictionary record</h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-zinc-300">
-            Words are recorded from accepted manual swipes. Inspiration auto-hints are not counted as manual
-            hunts.
+            Words are recorded from accepted manual swipes. Inspiration auto-hints are not counted as manual hunts.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {summary.dictionary.recentWords.length === 0 ? (
@@ -252,9 +249,7 @@ export default function ProfileClient() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">
-        {label}
-      </div>
+      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">{label}</div>
       <div className="mt-2 text-3xl font-black">{value}</div>
     </div>
   );

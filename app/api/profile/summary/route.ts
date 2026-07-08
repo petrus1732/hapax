@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import dictionary from '@/app/lib/dictionary.json';
 import { auth } from '@/app/lib/auth';
-import {
-  currentUserKey,
-  ensureProfileTables,
-  sessionUserEmail,
-  sessionUserName,
-} from '@/app/lib/profile-storage';
+import { currentUserKey, ensureProfileTables, sessionUserEmail, sessionUserName } from '@/app/lib/profile-storage';
 
 type WordRow = {
   word: string;

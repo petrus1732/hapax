@@ -532,12 +532,7 @@ export default function RandomBoardClient() {
       fetch('/api/profile/words', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          word: entry.word,
-          path: entry.path,
-          score: entry.score,
-          inspired: entry.inspired,
-        }),
+        body: JSON.stringify({ word: entry.word, path: entry.path, score: entry.score, inspired: entry.inspired }),
       }).catch(() => undefined);
     },
     [session?.user],
@@ -730,6 +725,7 @@ export default function RandomBoardClient() {
       trainingSeedWord: trainingSeedWord ?? board.trainingSeedWord ?? null,
     };
   };
+
 
   const saveRoundProgress = useCallback(
     async (completed: boolean) => {

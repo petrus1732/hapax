@@ -66,9 +66,7 @@ export function normalizeFoundWords(value: unknown): FoundWordRecord[] {
   for (const item of value) {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
-    const word = String(record.word ?? '')
-      .trim()
-      .toUpperCase();
+    const word = String(record.word ?? '').trim().toUpperCase();
     if (!/^[A-Z]{2,24}$/.test(word) || seen.has(word)) continue;
     seen.add(word);
 
@@ -94,9 +92,7 @@ export function validateRoundRecordPayload(payload: unknown): RoundRecordPayload
 
   const record = payload as Record<string, unknown>;
   const size = Number(record.size ?? BOARD_SIZE);
-  const letters = String(record.letters ?? '')
-    .trim()
-    .toUpperCase();
+  const letters = String(record.letters ?? '').trim().toUpperCase();
   const foundWords = normalizeFoundWords(record.foundWords);
   const totalWords = Math.max(0, Math.floor(Number(record.totalWords ?? 0)));
   const countableWords = Math.max(0, Math.floor(Number(record.countableWords ?? totalWords)));

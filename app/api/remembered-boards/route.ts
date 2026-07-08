@@ -25,6 +25,7 @@ async function ensureRememberedBoardsTable() {
   await sql`CREATE INDEX IF NOT EXISTS remembered_boards_user_email_idx ON remembered_boards (user_email)`;
 }
 
+
 export async function GET() {
   try {
     const session = await auth();
