@@ -5,6 +5,7 @@ interface TileProps {
   id: number;
   letter: string;
   fontSize: number;
+  radiusEm?: number;
   onStart: (index: number) => void;
   onMove: (index: number) => void;
   isActive: boolean;
@@ -40,6 +41,7 @@ export default function Tile({
   id,
   letter,
   fontSize,
+  radiusEm = 0.42,
   onStart,
   onMove,
   isActive,
@@ -83,7 +85,7 @@ export default function Tile({
   }, [disabled, id, onStart, onMove]);
 
   const className = [
-    'wb-tile relative z-10 select-none rounded-md flex justify-center items-center w-full h-full shadow-sm transition-all',
+    'wb-tile relative z-10 select-none flex justify-center items-center w-full h-full shadow-sm transition-all',
     bonusFrameClass(bonus),
     isActive ? 'wb-tile-active' : '',
     isRouteFlashing && !isActive ? 'wb-tile-flash' : '',
@@ -98,7 +100,7 @@ export default function Tile({
     <div
       ref={tileRef}
       data-tile-id={id}
-      style={{ fontSize: `${fontSize}px` }}
+      style={{ fontSize: `${fontSize}px`, borderRadius: `${radiusEm}em` }}
       className={className}
       onMouseDown={() => !disabled && onStart(id)}
       onMouseEnter={() => !disabled && onMove(id)}

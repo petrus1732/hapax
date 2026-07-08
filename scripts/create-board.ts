@@ -1,4 +1,3 @@
-import { Board } from './app/lib/definitions';
 import dotenv from 'dotenv';
 import { sql } from '@vercel/postgres';
 

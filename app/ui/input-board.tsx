@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import InputTile from './input-tile';
+import { getWordBlitzBoardMetrics } from './wordblitz-layout';
 
 export default function InputBoard({ size }: { size: number }) {
-  const boardSize: number = 288;
-  const fontSize: number = (boardSize / size) * 0.5;
+  const metrics = getWordBlitzBoardMetrics(size);
+  const boardSize = metrics.boardSize;
+  const fontSize = metrics.tileFontSize;
 
   return (
     <div>
@@ -13,14 +14,16 @@ export default function InputBoard({ size }: { size: number }) {
         style={{
           width: `${boardSize}px`,
           height: `${boardSize}px`,
-          gridTemplateColumns: `repeat(${size}, 1fr)`,
+          gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${size}, minmax(0, 1fr))`,
+          gap: `${metrics.gridGap}px`,
         }}
-        className="grid gap-1 mx-auto"
+        className="mx-auto grid shrink-0"
       >
         {Array(size * size)
           .fill(null)
           .map((_, id) => (
-            <InputTile key={id} id={id} fontSize={fontSize} />
+            <InputTile key={id} id={id} fontSize={fontSize} radiusEm={metrics.tileRadiusEm} />
           ))}
       </div>
     </div>

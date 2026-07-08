@@ -1,5 +1,5 @@
-import { Trie } from './app/lib/trie';
-import { findWords } from './app/lib/find-words';
+import { Trie } from '../app/lib/trie';
+import { findWords } from '../app/lib/find-words';
 import dotenv from 'dotenv';
 import { sql } from '@vercel/postgres';
 

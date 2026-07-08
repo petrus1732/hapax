@@ -1,6 +1,7 @@
 'use client';
 
 import SquareBoard, { SubmittedTerm, SubmitResult } from '@/app/ui/square-board';
+import { vibrateForNewWord } from '@/app/ui/wordblitz-feedback';
 import { Board } from '@/app/lib/definitions';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
@@ -131,16 +132,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
-}
-
-function vibrateForNewWord(): void {
-  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
-
-  try {
-    navigator.vibrate(35);
-  } catch {
-    // Vibration is best-effort only; unsupported browsers/devices can ignore it.
-  }
 }
 
 export default function RandomBoardClient() {

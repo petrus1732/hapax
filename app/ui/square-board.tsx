@@ -3,6 +3,8 @@
 import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 import Tile from './tile';
 import { BonusOrNull, isAdjacent, letterPoints } from '@/app/lib/wordblitz';
+import { getWordBlitzBoardMetrics } from './wordblitz-layout';
+import { vibrateForTileSwipe } from './wordblitz-feedback';
 
 export type SubmittedTerm = {
   word: string;
@@ -34,22 +36,20 @@ interface SquareBoardProps {
   disabled?: boolean;
 }
 
-const GRID_GAP = 12;
-
 function activeTilesForPath(path: number[], tileCount: number): boolean[] {
   const active = Array(tileCount).fill(false);
   for (const index of path) active[index] = true;
   return active;
 }
 
-function routePoints(path: number[], size: number, boardSize: number): string {
-  const tileSize = (boardSize - GRID_GAP * (size - 1)) / size;
+function routePoints(path: number[], size: number, boardSize: number, gridGap: number): string {
+  const tileSize = (boardSize - gridGap * (size - 1)) / size;
   return path
     .map((index) => {
       const row = Math.floor(index / size);
       const column = index % size;
-      const x = column * (tileSize + GRID_GAP) + tileSize / 2;
-      const y = row * (tileSize + GRID_GAP) + tileSize / 2;
+      const x = column * (tileSize + gridGap) + tileSize / 2;
+      const y = row * (tileSize + gridGap) + tileSize / 2;
       return `${x},${y}`;
     })
     .join(' ');
@@ -70,8 +70,9 @@ export default function SquareBoard({
   highlightedRoute = [],
   disabled = false,
 }: SquareBoardProps) {
-  const boardSize = 288;
-  const fontSize = (boardSize / size) * 0.5;
+  const metrics = getWordBlitzBoardMetrics(size);
+  const boardSize = metrics.boardSize;
+  const fontSize = metrics.tileFontSize;
   const tileCount = size * size;
   const [wordColor, setWordColor] = useState<string>('inherit');
   const [path, setPath] = useState<number[]>([]);
@@ -116,6 +117,7 @@ export default function SquareBoard({
       pathRef.current = newPath;
       setActiveTiles(activeTilesForPath(newPath, tileCount));
       setWordColor('inherit');
+      vibrateForTileSwipe();
     },
     [disabled, tileCount],
   );
@@ -139,6 +141,7 @@ export default function SquareBoard({
         setPath(nextPath);
         pathRef.current = nextPath;
         setActiveTiles(activeTilesForPath(nextPath, tileCount));
+        vibrateForTileSwipe();
       }
     },
     [disabled, size, tileCount],
@@ -165,7 +168,7 @@ export default function SquareBoard({
         if (isAlreadyFound) setWordColor('yellow');
         else {
           setSwiped((arr) => ({ ...arr, [word]: true }));
-          setWordColor('green');
+          setWordColor('inherit');
         }
       } else {
         setWordColor('red');
@@ -213,18 +216,23 @@ export default function SquareBoard({
   const isClickable = wordColor === 'green' || wordColor === 'yellow';
   const routePath = isRecording ? path : highlightedRoute;
   const highlighted = new Set(isRecording ? [] : highlightedRoute);
-  const routePolylinePoints = routePath.length >= 2 ? routePoints(routePath, size, boardSize) : '';
+  const routePolylinePoints =
+    routePath.length >= 2 ? routePoints(routePath, size, boardSize, metrics.gridGap) : '';
 
   return (
     <div className="wb-square-board">
-      <div className="mb-2 flex h-10 items-center justify-center">
+      <div
+        className="mb-2 flex items-center justify-center"
+        style={{ height: `${Math.round(metrics.selectedWordHeight)}px` }}
+      >
         <div
           style={{
             color: wordColor,
             borderColor: isClickable ? wordColor : 'transparent',
             visibility: currentWord ? 'visible' : 'hidden',
+            fontSize: `${Math.max(14, metrics.selectedWordFontSize)}px`,
           }}
-          className={`flex items-center justify-center rounded-full border-2 px-3 py-0 text-xl font-bold transition-all ${
+          className={`flex items-center justify-center rounded-full border-2 px-3 py-0 font-bold transition-all ${
             isClickable
               ? 'cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-800'
               : 'border-transparent'
@@ -240,8 +248,9 @@ export default function SquareBoard({
           height: `${boardSize}px`,
           gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${size}, minmax(0, 1fr))`,
+          gap: `${metrics.gridGap}px`,
         }}
-        className="wb-board-grid relative isolate mx-auto grid shrink-0 gap-3"
+        className="wb-board-grid relative isolate mx-auto grid shrink-0"
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
       >
@@ -269,6 +278,7 @@ export default function SquareBoard({
               id={id}
               letter={letters[id]}
               fontSize={fontSize}
+              radiusEm={metrics.tileRadiusEm}
               onStart={handleStart}
               onMove={handleMove}
               isActive={activeTiles[id]}
