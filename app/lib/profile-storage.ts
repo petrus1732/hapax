@@ -1,9 +1,8 @@
 import { sql } from '@vercel/postgres';
-import { auth } from '@/app/lib/auth';
 import { BOARD_SIZE, BonusOrNull, PracticeMode } from './wordblitz';
 import { normalizeBonuses, serializeBonuses } from './board-storage';
 
-export type AuthSession = Awaited<ReturnType<typeof auth>>;
+export type AuthSession = unknown;
 
 type SessionUserLike = {
   name?: string | null;
