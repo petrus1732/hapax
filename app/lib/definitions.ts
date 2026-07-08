@@ -14,4 +14,10 @@ export type Board = {
   date: string;
   theme?: string;
   subtheme?: string;
+  bonuses?: string | null;
+  sourceMode?: string | null;
+  source_mode?: string | null;
+  abundance?: string | null;
+  trainingSeedWord?: string | null;
+  training_seed_word?: string | null;
 };

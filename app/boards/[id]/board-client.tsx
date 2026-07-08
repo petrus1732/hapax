@@ -8,6 +8,8 @@ import { Board } from '@/app/lib/definitions';
 import { fetchBoardById } from '@/app/lib/data';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
+import { parseBonuses } from '@/app/lib/board-storage';
+import { countBonuses } from '@/app/lib/wordblitz';
 
 export default function BoardClient({ params }: { params: { id: string } }) {
   const { boards, time } = useBoards();
@@ -26,6 +28,9 @@ export default function BoardClient({ params }: { params: { id: string } }) {
   const [isLoadingDefinition, setIsLoadingDefinition] = useState(false);
   const subtheme = board?.subtheme;
   const allWordsFlat = words.flat();
+  const bonuses = parseBonuses(board?.bonuses, (board?.size ?? 4) * (board?.size ?? 4));
+  const hasBonuses = bonuses.some(Boolean);
+  const bonusCounts = countBonuses(bonuses);
 
   const allSubthemeWords = subtheme ? allWordsFlat.filter((w) => w.includes(subtheme)) : [];
 
@@ -592,6 +597,27 @@ export default function BoardClient({ params }: { params: { id: string } }) {
             </Modal.Body>
           </Modal>
 
+          <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm font-semibold dark:border-zinc-800 dark:bg-zinc-900">
+            <div>{allWordsFlat.length} total words</div>
+            {board.abundance || board.training_seed_word || board.trainingSeedWord ? (
+              <div className="mt-1 text-xs text-gray-600 dark:text-zinc-300">
+                {board.abundance ? `Abundance: ${board.abundance}` : ''}
+                {board.training_seed_word || board.trainingSeedWord
+                  ? ` · seed word: ${board.training_seed_word ?? board.trainingSeedWord}`
+                  : ''}
+              </div>
+            ) : null}
+            {hasBonuses && (
+              <div className="mt-1 text-xs text-gray-600 dark:text-zinc-300">
+                Bonuses:{' '}
+                {Object.entries(bonusCounts)
+                  .filter(([, value]) => value > 0)
+                  .map(([label, value]) => `${label}×${value}`)
+                  .join(', ')}
+              </div>
+            )}
+          </div>
+
           <SquareBoard
             size={board.size}
             letters={board.letters}
@@ -599,6 +625,8 @@ export default function BoardClient({ params }: { params: { id: string } }) {
             setSwiped={setSwiped}
             validWords={words}
             minLength={2}
+            bonuses={bonuses}
+            showTileScores={hasBonuses}
             onWordClick={handleWordClick}
           ></SquareBoard>
         </div>

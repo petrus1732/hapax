@@ -3,7 +3,7 @@ import { Button } from './button';
 import { auth } from '@/app/lib/auth';
 import { redirect } from 'next/navigation';
 import { signOut } from '@/app/lib/auth';
-import { HomeIcon, BookOpenIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, BookOpenIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 export async function TopBar() {
@@ -21,6 +21,9 @@ export async function TopBar() {
         </Link>
         <Link href="/dictionary" className="flex items-center">
           <BookOpenIcon className="h-5 w-5" />
+        </Link>
+        <Link href="/profile" className="flex items-center">
+          <UserCircleIcon className="h-5 w-5" />
         </Link>
         <ThemeSwitch></ThemeSwitch>
       </div>

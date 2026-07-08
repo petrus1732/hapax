@@ -3,6 +3,7 @@ export type BonusOrNull = Bonus | null;
 export type RoundMode = 'practice' | 'r1' | 'r2' | 'r3' | 'r4';
 export type PracticeMode =
   | 'practice'
+  | 'infinite'
   | 'normal'
   | 'inspiration'
   | 'length-bonus-5-plus'
@@ -62,6 +63,46 @@ export function calculateInspirationChargeState(
 }
 
 export type TrainingLetter = (typeof TRAINING_LETTERS)[number];
+
+export type BoardAbundance = 'poor' | 'normal' | 'rich' | 'very-rich';
+
+export type BoardAbundanceSpec = {
+  id: BoardAbundance;
+  label: string;
+  min: number;
+  max: number | null;
+  description: string;
+};
+
+export const BOARD_ABUNDANCE_SPECS: Record<BoardAbundance, BoardAbundanceSpec> = {
+  poor: { id: 'poor', label: 'Poor', min: 0, max: 150, description: '150 words or fewer.' },
+  normal: { id: 'normal', label: 'Normal', min: 151, max: 250, description: '151–250 words.' },
+  rich: { id: 'rich', label: 'Rich', min: 251, max: 400, description: '251–400 words.' },
+  'very-rich': { id: 'very-rich', label: 'Very Rich', min: 401, max: null, description: '401+ words.' },
+};
+
+export function classifyBoardAbundance(wordCount: number): BoardAbundance {
+  if (wordCount <= BOARD_ABUNDANCE_SPECS.poor.max!) return 'poor';
+  if (wordCount <= BOARD_ABUNDANCE_SPECS.normal.max!) return 'normal';
+  if (wordCount <= BOARD_ABUNDANCE_SPECS.rich.max!) return 'rich';
+  return 'very-rich';
+}
+
+export function boardAbundanceLabel(abundance: BoardAbundance): string {
+  return BOARD_ABUNDANCE_SPECS[abundance].label;
+}
+
+export function wordCountMatchesAbundance(wordCount: number, abundance: BoardAbundance): boolean {
+  const spec = BOARD_ABUNDANCE_SPECS[abundance];
+  return wordCount >= spec.min && (spec.max === null || wordCount <= spec.max);
+}
+
+export function boardAbundanceDistance(wordCount: number, abundance: BoardAbundance): number {
+  const spec = BOARD_ABUNDANCE_SPECS[abundance];
+  if (wordCount < spec.min) return spec.min - wordCount;
+  if (spec.max !== null && wordCount > spec.max) return wordCount - spec.max;
+  return 0;
+}
 
 export const TRAINING_WORD_RICH_FALLBACK_BOARDS: Record<TrainingLetter, string> = {
   Q: 'MARMNEAYOSLAQZXE',
@@ -255,13 +296,14 @@ export function groupWordsByLength(words: string[]): string[][] {
   return grouped.map((group) => (group ? [...group].sort() : group));
 }
 
-export function randomBoardLetters(): string {
+export function randomBoardLetters(options: { avoidHardLetters?: boolean } = {}): string {
+  const consonantPool = options.avoidHardLetters ? CONSONANTS.replace(/[QJX]/g, '') : CONSONANTS;
   let letters = '';
   for (let index = 0; index < BOARD_SIZE * BOARD_SIZE; index += 1) {
     letters +=
       Math.random() < 0.3
         ? VOWELS[Math.floor(Math.random() * VOWELS.length)]
-        : CONSONANTS[Math.floor(Math.random() * CONSONANTS.length)];
+        : consonantPool[Math.floor(Math.random() * consonantPool.length)];
   }
   return letters;
 }
@@ -377,7 +419,15 @@ export function generateBoardWithWord(word: string, targetLetter?: string): stri
   return board.join('');
 }
 
-export function generateTrainingBoard(wordlist: string[], letter: TrainingLetter): string {
+export type TrainingBoardCandidate = {
+  letters: string;
+  seedWord: string | null;
+};
+
+export function generateTrainingBoardCandidate(
+  wordlist: string[],
+  letter: TrainingLetter,
+): TrainingBoardCandidate {
   const candidates = wordlist
     .map((word) => word.toUpperCase())
     .filter((word) => word.length >= 5 && word.length <= 8 && word.includes(letter));
@@ -385,11 +435,59 @@ export function generateTrainingBoard(wordlist: string[], letter: TrainingLetter
   if (candidates.length === 0) {
     const letters = randomBoardLetters().split('');
     letters[Math.floor(Math.random() * letters.length)] = letter;
-    return letters.join('');
+    return { letters: letters.join(''), seedWord: null };
   }
 
   const baseWord = candidates[Math.floor(Math.random() * candidates.length)];
-  return generateBoardWithWord(baseWord, letter);
+  return { letters: generateBoardWithWord(baseWord, letter), seedWord: baseWord };
+}
+
+export function generateTrainingBoard(wordlist: string[], letter: TrainingLetter): string {
+  return generateTrainingBoardCandidate(wordlist, letter).letters;
+}
+
+export function countWordsThroughLetter(
+  size: number,
+  letters: string,
+  words: string[],
+  letter: string,
+): number {
+  const target = letter.toUpperCase();
+  const targetIndexes = new Set(
+    letters
+      .split('')
+      .map((candidate, index) => (candidate === target ? index : -1))
+      .filter((index) => index >= 0),
+  );
+
+  if (targetIndexes.size === 0) return 0;
+
+  return words.filter((word) =>
+    findRoutesForWord(size, letters, word).some((route) => route.some((index) => targetIndexes.has(index))),
+  ).length;
+}
+
+export function hasFivePlusWordThroughLetter(
+  size: number,
+  letters: string,
+  words: string[],
+  letter: string,
+): boolean {
+  const target = letter.toUpperCase();
+  const targetIndexes = new Set(
+    letters
+      .split('')
+      .map((candidate, index) => (candidate === target ? index : -1))
+      .filter((index) => index >= 0),
+  );
+
+  if (targetIndexes.size === 0) return false;
+
+  return words.some(
+    (word) =>
+      word.length >= 5 &&
+      findRoutesForWord(size, letters, word).some((route) => route.some((index) => targetIndexes.has(index))),
+  );
 }
 
 export function generateBonuses(round: RoundMode, letters: string, trainingLetter?: string): BonusOrNull[] {

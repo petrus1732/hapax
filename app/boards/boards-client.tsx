@@ -158,6 +158,14 @@ export default function BoardsClient() {
                         {board.theme} - {board.subtheme}
                       </div>
                     )}
+                    {(board.abundance || board.training_seed_word || board.trainingSeedWord) && (
+                      <div className="text-xs text-gray-500 dark:text-zinc-400">
+                        {board.abundance ? `abundance: ${board.abundance}` : ''}
+                        {board.training_seed_word || board.trainingSeedWord
+                          ? ` · seed: ${board.training_seed_word ?? board.trainingSeedWord}`
+                          : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-2 py-5 text-sm">{board.author}</td>
                   <td className="whitespace-nowrap px-2 py-5 text-sm">{board.date}</td>

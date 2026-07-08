@@ -3,31 +3,39 @@
 import SquareBoard, { SubmittedTerm, SubmitResult } from '@/app/ui/square-board';
 import { vibrateForNewWord } from '@/app/ui/wordblitz-feedback';
 import { Board } from '@/app/lib/definitions';
+import { useSession } from 'next-auth/react';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
 import {
   BLITZ_SECONDS,
+  BOARD_ABUNDANCE_SPECS,
   BOARD_SIZE,
   MAX_BOARD_ROLL_ATTEMPTS,
-  MIN_PLAYABLE_WORDS,
+  BoardAbundance,
   BonusOrNull,
   PracticeMode,
   ROUND_SECONDS,
   RoundMode,
   TRAINING_LETTERS,
   TrainingLetter,
+  boardAbundanceDistance,
+  boardAbundanceLabel,
   bestRouteForWord,
   calculatePathScore,
   calculateInspirationChargeState,
+  classifyBoardAbundance,
   countBonuses,
+  countWordsThroughLetter,
   fallbackBoardForMode,
   filterCountableWordsForMode,
   formatRoute,
   generateBonuses,
-  generateTrainingBoard,
+  generateTrainingBoardCandidate,
   groupWordsByLength,
+  hasFivePlusWordThroughLetter,
   isWordCountableInMode,
   randomBoardLetters,
+  wordCountMatchesAbundance,
 } from '@/app/lib/wordblitz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -45,6 +53,11 @@ type FoundWord = {
 
 const MAIN_MODES: Array<{ id: PracticeMode | 'custom-arena'; label: string; description: string }> = [
   { id: 'practice', label: 'practice', description: 'No score and no multipliers.' },
+  {
+    id: 'infinite',
+    label: 'infinite',
+    description: 'No score, no timer; just find as many words as you want.',
+  },
   { id: 'normal', label: 'normal', description: 'R1/R2/R3 Word Blitz-style scoring.' },
   { id: 'inspiration', label: 'inspiration', description: 'Earn one hint per 5 manually found words.' },
   {
@@ -139,6 +152,7 @@ export default function RandomBoardClient() {
   const [arenaMode, setArenaMode] = useState<ArenaSubmode>('arena-gladiator');
   const [roundMode, setRoundMode] = useState<RoundMode>('r1');
   const [trainingLetter, setTrainingLetter] = useState<TrainingLetter>('Q');
+  const [boardAbundance, setBoardAbundance] = useState<BoardAbundance>('normal');
   const [board, setBoard] = useState<Board | null>(null);
   const [bonuses, setBonuses] = useState<BonusOrNull[]>(Array(BOARD_SIZE * BOARD_SIZE).fill(null));
   const [wordlist, setWordlist] = useState<string[]>([]);
@@ -163,14 +177,19 @@ export default function RandomBoardClient() {
   const [highlightedRoute, setHighlightedRoute] = useState<number[]>([]);
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
   const [isInspirationAnimating, setIsInspirationAnimating] = useState(false);
+  const [trainingSeedWord, setTrainingSeedWord] = useState<string | null>(null);
+  const [persistenceMessage, setPersistenceMessage] = useState<string>('');
+  const [playRecordId, setPlayRecordId] = useState<string | null>(null);
+  const [completedRecordId, setCompletedRecordId] = useState<string | null>(null);
+  const { data: session } = useSession();
 
   const activeMode = mode;
   const effectiveRound: RoundMode =
     activeMode === 'quadruple-bonus' ? 'r4' : isRoundMode(activeMode) ? roundMode : 'practice';
-  const hasTimer = activeMode !== 'practice';
+  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite';
   const roundDuration = activeMode === 'blitz' ? BLITZ_SECONDS : hasTimer ? ROUND_SECONDS : 0;
   const lengthBonus5Plus = activeMode === 'length-bonus-5-plus';
-  const isPractice = activeMode === 'practice';
+  const isPractice = activeMode === 'practice' || activeMode === 'infinite';
   const isEvolution = activeMode === 'evolution';
   const validMinLength = activeMode === 'long-words-only-4-plus' ? 4 : 2;
   const validWordsForSwipe =
@@ -179,6 +198,7 @@ export default function RandomBoardClient() {
   const allBoardWords = useMemo(() => dictionaryWords.flat().filter(Boolean), [dictionaryWords]);
   const wordListGroups = finished ? dictionaryWords : words;
   const wordListTotal = finished ? allBoardWords.length : flatWords.length;
+  const currentAbundance = classifyBoardAbundance(allBoardWords.length);
   const foundWordList = useMemo(() => Object.values(foundWords), [foundWords]);
   const inspirationCharge = calculateInspirationChargeState(manualAcceptedCount, hintsUsed);
   const availableHints = activeMode === 'inspiration' ? inspirationCharge.availableHints : 0;
@@ -293,6 +313,10 @@ export default function RandomBoardClient() {
     setMask(true);
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
+    setTrainingSeedWord(null);
+    setPersistenceMessage('');
+    setPlayRecordId(null);
+    setCompletedRecordId(null);
   }, []);
 
   const startNewBoard = useCallback(async () => {
@@ -300,75 +324,100 @@ export default function RandomBoardClient() {
 
     setIsRollingBoard(true);
     resetRoundState();
+    setPlayRecordId(null);
+    setCompletedRecordId(null);
     setBoard(null);
     setRoundPhase('idle');
     setCountdown(0);
-    setStatusMessage('Rolling a board where every tile has a valid route...');
+    setStatusMessage(`Rolling a ${boardAbundanceLabel(boardAbundance)} board...`);
 
-    const generateCandidateLetters = () =>
-      activeMode === 'training' ? generateTrainingBoard(wordlist, trainingLetter) : randomBoardLetters();
+    type Candidate = {
+      letters: string;
+      seedWord: string | null;
+    };
 
-    const scoreCandidate = (letters: string) => {
-      const [rawFound, allTilesCovered] = findWords(BOARD_SIZE, letters, trie, {
+    const avoidHardLetters = boardAbundance === 'rich' || boardAbundance === 'very-rich';
+    const generateCandidateLetters = (): Candidate =>
+      activeMode === 'training'
+        ? generateTrainingBoardCandidate(wordlist, trainingLetter)
+        : { letters: randomBoardLetters({ avoidHardLetters }), seedWord: null };
+
+    const scoreCandidate = (candidate: Candidate) => {
+      const [rawFound, allTilesCovered] = findWords(BOARD_SIZE, candidate.letters, trie, {
         minCoverageLength: 2,
         countWordForCoverage: (word) => isWordCountableInMode(word, activeMode),
       });
       const found = rawFound.filter((word) => word.length >= 2);
-      return { found, count: found.length, allTilesCovered };
+      const countable = filterCountableWordsForMode(found, activeMode);
+      const throughTrainingLetter =
+        activeMode === 'training'
+          ? countWordsThroughLetter(BOARD_SIZE, candidate.letters, found, trainingLetter)
+          : 0;
+      const trainingHasFivePlus =
+        activeMode === 'training'
+          ? hasFivePlusWordThroughLetter(BOARD_SIZE, candidate.letters, found, trainingLetter)
+          : true;
+      const trainingSatisfied =
+        activeMode !== 'training' || trainingHasFivePlus || throughTrainingLetter >= 10;
+
+      return {
+        ...candidate,
+        found,
+        countable,
+        count: found.length,
+        allTilesCovered,
+        abundanceDistance: boardAbundanceDistance(found.length, boardAbundance),
+        matchesAbundance: wordCountMatchesAbundance(found.length, boardAbundance),
+        trainingSatisfied,
+        throughTrainingLetter,
+        trainingHasFivePlus,
+      };
     };
 
+    const coverageIsRequired = boardAbundance === 'poor' || boardAbundance === 'normal';
     const isAcceptableCandidate = (result: ReturnType<typeof scoreCandidate>) =>
-      result.count >= MIN_PLAYABLE_WORDS && result.allTilesCovered;
+      result.matchesAbundance &&
+      result.trainingSatisfied &&
+      (!coverageIsRequired || result.allTilesCovered) &&
+      (boardAbundance !== 'poor' || result.count >= 10);
 
     const isBetterCandidate = (
       candidate: ReturnType<typeof scoreCandidate>,
       current: ReturnType<typeof scoreCandidate>,
-    ) =>
-      candidate.allTilesCovered !== current.allTilesCovered
-        ? candidate.allTilesCovered
-        : candidate.count > current.count;
+    ) => {
+      if (candidate.trainingSatisfied !== current.trainingSatisfied) return candidate.trainingSatisfied;
+      if (candidate.abundanceDistance !== current.abundanceDistance) {
+        return candidate.abundanceDistance < current.abundanceDistance;
+      }
+      if (candidate.allTilesCovered !== current.allTilesCovered) return candidate.allTilesCovered;
+      if (boardAbundance === 'poor') return candidate.count < current.count;
+      return candidate.count > current.count;
+    };
 
-    let letters = generateCandidateLetters();
-    let bestResult = scoreCandidate(letters);
-    let metMinimum = isAcceptableCandidate(bestResult);
+    let bestResult = scoreCandidate(generateCandidateLetters());
     let attemptsUsed = 1;
 
-    while (!metMinimum) {
-      for (let attempt = 0; attempt < MAX_BOARD_ROLL_ATTEMPTS && !metMinimum; attempt += 1) {
-        attemptsUsed += 1;
-        const candidateLetters = generateCandidateLetters();
-        const result = scoreCandidate(candidateLetters);
+    for (let attempt = 0; attempt < MAX_BOARD_ROLL_ATTEMPTS; attempt += 1) {
+      if (isAcceptableCandidate(bestResult)) break;
 
-        if (isBetterCandidate(result, bestResult)) {
-          letters = candidateLetters;
-          bestResult = result;
-        }
+      attemptsUsed += 1;
+      const result = scoreCandidate(generateCandidateLetters());
+      if (isBetterCandidate(result, bestResult)) bestResult = result;
 
-        if (isAcceptableCandidate(result)) {
-          letters = candidateLetters;
-          bestResult = result;
-          metMinimum = true;
-        }
-      }
-
-      if (!metMinimum) {
-        const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
-        const fallbackResult = scoreCandidate(fallbackLetters);
-        if (isBetterCandidate(fallbackResult, bestResult)) {
-          letters = fallbackLetters;
-          bestResult = fallbackResult;
-        }
-        metMinimum = isAcceptableCandidate(bestResult);
-      }
-
-      if (!metMinimum) {
+      if (attempt % 15 === 14) {
         setStatusMessage(
-          `Still rolling... best so far has ${bestResult.count} board words${
+          `Rolling ${boardAbundanceLabel(boardAbundance)}... best so far has ${bestResult.count} board words${
             bestResult.allTilesCovered ? ' and full tile coverage' : ''
-          } after ${attemptsUsed} rerolls.`,
+          }.`,
         );
         await waitForNextFrame();
       }
+    }
+
+    if (!isAcceptableCandidate(bestResult)) {
+      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
+      const fallbackResult = scoreCandidate({ letters: fallbackLetters, seedWord: null });
+      if (isBetterCandidate(fallbackResult, bestResult)) bestResult = fallbackResult;
     }
 
     const sortedAllWords = bestResult.found.sort((a, b) =>
@@ -377,34 +426,96 @@ export default function RandomBoardClient() {
     const sortedCountableWords = filterCountableWordsForMode(sortedAllWords, activeMode);
 
     const nextBonuses =
-      activeMode === 'practice' || activeMode === 'evolution'
+      isPractice || isEvolution
         ? Array(BOARD_SIZE * BOARD_SIZE).fill(null)
-        : generateBonuses(effectiveRound, letters, activeMode === 'training' ? trainingLetter : undefined);
+        : generateBonuses(
+            effectiveRound,
+            bestResult.letters,
+            activeMode === 'training' ? trainingLetter : undefined,
+          );
+    const acceptedExact = isAcceptableCandidate(bestResult);
+    const seedWord = activeMode === 'training' ? bestResult.seedWord : null;
+    const actualAbundance = classifyBoardAbundance(sortedAllWords.length);
 
+    setTrainingSeedWord(seedWord);
     setBoard({
       id: `practice-${Date.now()}`,
       author: 'Practice Lab',
-      boardName: `${modeTitle(activeMode)} ${effectiveRound.toUpperCase()}`,
+      boardName:
+        activeMode === 'training' && seedWord
+          ? `${seedWord} ${boardAbundanceLabel(actualAbundance)} training board`
+          : `${modeTitle(activeMode)} ${boardAbundanceLabel(actualAbundance)} ${effectiveRound.toUpperCase()}`,
       size: BOARD_SIZE,
-      letters,
+      letters: bestResult.letters,
       date: new Date().toISOString().split('T')[0],
       theme: activeMode === 'training' ? 'Rare Letters' : undefined,
       subtheme: activeMode === 'training' ? trainingLetter : undefined,
+      sourceMode: activeMode,
+      abundance: actualAbundance,
+      trainingSeedWord: seedWord,
     });
     setDictionaryWords(groupWordsByLength(sortedAllWords));
     setWords(groupWordsByLength(sortedCountableWords));
     setBonuses(nextBonuses);
     setTimeLeft(roundDuration);
-    setRoundPhase('countdown');
-    setCountdown(3);
-    setStatusMessage(`Board ready with ${sortedAllWords.length} board words. Countdown starts now.`);
+    setRoundPhase(hasTimer ? 'countdown' : 'playing');
+    setCountdown(hasTimer ? 3 : 0);
+    setStatusMessage(
+      `${acceptedExact ? 'Board ready' : 'Closest board ready'} with ${sortedAllWords.length} total words (${boardAbundanceLabel(
+        actualAbundance,
+      )}) after ${attemptsUsed} roll${attemptsUsed === 1 ? '' : 's'}${
+        seedWord ? ` · seed word: ${seedWord}` : ''
+      }.`,
+    );
+
+    if (session?.user) {
+      fetch('/api/profile/rounds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          round: {
+            boardName:
+              activeMode === 'training' && seedWord
+                ? `${seedWord} ${boardAbundanceLabel(actualAbundance)} training board`
+                : `${modeTitle(activeMode)} ${boardAbundanceLabel(actualAbundance)} ${effectiveRound.toUpperCase()}`,
+            size: BOARD_SIZE,
+            letters: bestResult.letters,
+            bonuses: nextBonuses,
+            theme: activeMode === 'training' ? 'Rare Letters' : null,
+            subtheme: activeMode === 'training' ? trainingLetter : null,
+            sourceMode: activeMode,
+            roundMode: effectiveRound,
+            abundance: actualAbundance,
+            trainingSeedWord: seedWord,
+            totalWords: sortedAllWords.length,
+            countableWords: sortedCountableWords.length,
+            foundWords: [],
+            foundCount: 0,
+            score: 0,
+            completed: false,
+          },
+        }),
+      })
+        .then(async (response) => {
+          const data = (await response.json().catch(() => null)) as { id?: string } | null;
+          if (response.ok && data?.id) setPlayRecordId(data.id);
+        })
+        .catch(() => undefined);
+    }
+
     setIsRollingBoard(false);
   }, [
     activeMode,
+    boardAbundance,
     effectiveRound,
+    hasTimer,
+    isEvolution,
+    isPractice,
     isRollingBoard,
     resetRoundState,
     roundDuration,
+    session?.user,
     trainingLetter,
     trie,
     wordlist,
@@ -415,27 +526,43 @@ export default function RandomBoardClient() {
     setSwiped((current) => ({ ...current, [entry.word]: true }));
   }, []);
 
+  const recordManualWord = useCallback(
+    (entry: FoundWord) => {
+      if (!session?.user || entry.inspired) return;
+      fetch('/api/profile/words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: entry.word, path: entry.path, score: entry.score, inspired: entry.inspired }),
+      }).catch(() => undefined);
+    },
+    [session?.user],
+  );
+
   const handleSubmitTerm = useCallback(
     ({ word, path, isDictionaryWord, isAlreadyFound }: SubmittedTerm): SubmitResult => {
       if (roundPhase !== 'playing' || finished) return { accepted: false, color: 'gray' };
       if (hasTimer && timeLeft <= 0) return { accepted: false, color: 'gray' };
       if (!isDictionaryWord) return { accepted: false, color: 'red' };
       if (isAlreadyFound) {
+        recordManualWord({ word, path, score: 0 });
         setStatusMessage(`${word} was already found.`);
         return { accepted: false, color: 'yellow' };
       }
 
       if (activeMode === 'long-words-only-4-plus' && word.length < 4) {
+        recordManualWord({ word, path, score: 0 });
         return { accepted: false, color: 'inherit' };
       }
 
       if (activeMode === 'arena-gladiator' && word.length <= 4) {
+        recordManualWord({ word, path, score: 0 });
         setPenalties((current) => current + 1);
         setStatusMessage(`${word} is too short for gladiator mode. Penalty +1.`);
         return { accepted: false, color: 'red' };
       }
 
       if (activeMode === 'arena-tight-rope' && word.length !== 4) {
+        recordManualWord({ word, path, score: 0 });
         setPenalties((current) => current + 1);
         setStatusMessage(`${word} is not length 4. Penalty +1.`);
         return { accepted: false, color: 'red' };
@@ -446,7 +573,9 @@ export default function RandomBoardClient() {
         practice: isPractice,
       });
 
-      addFoundWord({ word, path, score });
+      const foundEntry = { word, path, score };
+      addFoundWord(foundEntry);
+      recordManualWord(foundEntry);
       vibrateForNewWord();
       setManualAcceptedCount((current) => current + 1);
 
@@ -477,6 +606,7 @@ export default function RandomBoardClient() {
     [
       activeMode,
       addFoundWord,
+      recordManualWord,
       board?.letters,
       bonuses,
       finished,
@@ -580,6 +710,117 @@ export default function RandomBoardClient() {
     setOpenWordList(false);
   };
 
+  const buildPersistedBoardPayload = (boardNamePrefix: string) => {
+    if (!board) return null;
+    const abundance = classifyBoardAbundance(allBoardWords.length);
+    return {
+      boardName: `${boardNamePrefix} ${board.letters}`.trim(),
+      size: board.size,
+      letters: board.letters,
+      bonuses,
+      theme: board.theme ?? null,
+      subtheme: board.subtheme ?? null,
+      sourceMode: activeMode,
+      abundance,
+      trainingSeedWord: trainingSeedWord ?? board.trainingSeedWord ?? null,
+    };
+  };
+
+
+  const saveRoundProgress = useCallback(
+    async (completed: boolean) => {
+      if (!board || !session?.user || !playRecordId) return;
+      const foundWordPayload = foundWordList.map((item) => ({
+        word: item.word,
+        path: item.path,
+        score: item.score,
+        inspired: Boolean(item.inspired),
+      }));
+
+      await fetch('/api/profile/rounds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          round: {
+            id: playRecordId,
+            boardName: board.boardName,
+            size: board.size,
+            letters: board.letters,
+            bonuses,
+            theme: board.theme ?? null,
+            subtheme: board.subtheme ?? null,
+            sourceMode: activeMode,
+            roundMode: effectiveRound,
+            abundance: classifyBoardAbundance(allBoardWords.length),
+            trainingSeedWord: trainingSeedWord ?? board.trainingSeedWord ?? null,
+            totalWords: allBoardWords.length,
+            countableWords: flatWords.length,
+            foundWords: foundWordPayload,
+            foundCount: foundWordPayload.length,
+            score: totalScore,
+            completed,
+          },
+        }),
+      }).catch(() => undefined);
+
+      if (completed) setCompletedRecordId(playRecordId);
+    },
+    [
+      activeMode,
+      allBoardWords.length,
+      board,
+      bonuses,
+      effectiveRound,
+      flatWords.length,
+      foundWordList,
+      playRecordId,
+      session?.user,
+      totalScore,
+      trainingSeedWord,
+    ],
+  );
+
+  useEffect(() => {
+    if (roundPhase !== 'finished' || !playRecordId || completedRecordId === playRecordId) return;
+    void saveRoundProgress(true);
+  }, [completedRecordId, playRecordId, roundPhase, saveRoundProgress]);
+
+  const rememberBoard = async () => {
+    if (!session?.user) {
+      setPersistenceMessage('Please log in before remembering a board.');
+      return;
+    }
+
+    const payload = buildPersistedBoardPayload('remembered');
+    if (!payload) return;
+    setPersistenceMessage('Saving this board...');
+
+    const response = await fetch('/api/remembered-boards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json().catch(() => null)) as { error?: string } | null;
+    setPersistenceMessage(response.ok ? 'Board remembered.' : (data?.error ?? 'Failed to remember board.'));
+  };
+
+  const submitBoard = async () => {
+    const payload = buildPersistedBoardPayload('submitted');
+    if (!payload) return;
+    setPersistenceMessage('Submitting this board to the bulletin board...');
+
+    const response = await fetch('/api/boards/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json().catch(() => null)) as { error?: string } | null;
+    setPersistenceMessage(
+      response.ok ? 'Board submitted to the bulletin board.' : (data?.error ?? 'Failed to submit board.'),
+    );
+  };
+
   const changeMainMode = (nextMode: PracticeMode | 'custom-arena') => {
     const resolvedMode = nextMode === 'custom-arena' ? arenaMode : nextMode;
     setMode(resolvedMode);
@@ -587,7 +828,18 @@ export default function RandomBoardClient() {
     setRoundPhase('idle');
     setCountdown(0);
     setTimeLeft(0);
+    setPersistenceMessage('');
     setStatusMessage('Choose a mode, then press Start.');
+  };
+
+  const changeBoardAbundance = (nextAbundance: BoardAbundance) => {
+    setBoardAbundance(nextAbundance);
+    setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setPersistenceMessage('');
+    setStatusMessage('Board abundance changed. Press Start when ready.');
   };
 
   const changeArenaMode = (nextArenaMode: ArenaSubmode) => {
@@ -619,6 +871,7 @@ export default function RandomBoardClient() {
   };
 
   const leaveBoard = () => {
+    void saveRoundProgress(roundPhase === 'finished');
     setBoard(null);
     setRoundPhase('idle');
     setCountdown(0);
@@ -627,6 +880,7 @@ export default function RandomBoardClient() {
     setOpenWordList(false);
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
+    setPersistenceMessage('');
     setStatusMessage('Choose a mode, then press Start.');
   };
 
@@ -666,6 +920,30 @@ export default function RandomBoardClient() {
                 <div className="text-xs opacity-75">{candidate.description}</div>
               </button>
             ))}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-900 dark:bg-indigo-950/40">
+            <div className="mb-2 text-sm font-bold text-indigo-700 dark:text-indigo-200">Board abundance</div>
+            <div className="grid gap-2 md:grid-cols-4">
+              {Object.values(BOARD_ABUNDANCE_SPECS).map((candidate) => (
+                <button
+                  key={candidate.id}
+                  className={`rounded-lg border p-2 text-left text-sm ${
+                    boardAbundance === candidate.id
+                      ? 'border-indigo-500 bg-white text-indigo-700 dark:bg-zinc-900 dark:text-indigo-200'
+                      : 'border-indigo-200 bg-indigo-100/50 dark:border-indigo-900 dark:bg-zinc-900'
+                  }`}
+                  onClick={() => changeBoardAbundance(candidate.id)}
+                >
+                  <div className="font-bold">{candidate.label}</div>
+                  <div className="text-xs opacity-75">{candidate.description}</div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-indigo-700/80 dark:text-indigo-200/80">
+              Rich and Very Rich boards use a looser full-tile-coverage rule and avoid Q/J/X on non-training
+              rerolls.
+            </p>
           </div>
 
           {mode.startsWith('arena-') && (
@@ -778,6 +1056,10 @@ export default function RandomBoardClient() {
                       : 'free'}{' '}
                   · {board.letters}
                 </div>
+                <div className="mt-1 text-xs font-semibold text-gray-500 dark:text-zinc-400">
+                  {allBoardWords.length} total words · {boardAbundanceLabel(currentAbundance)}
+                  {trainingSeedWord ? ` · ${trainingSeedWord} board` : ''}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 text-sm">
                 {hasTimer && (
@@ -797,6 +1079,18 @@ export default function RandomBoardClient() {
                   Words {foundWordList.length}/{wordListTotal}
                 </button>
                 <button
+                  className="rounded-full bg-emerald-100 px-3 py-1 font-bold text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-200"
+                  onClick={rememberBoard}
+                >
+                  Remember
+                </button>
+                <button
+                  className="rounded-full bg-amber-100 px-3 py-1 font-bold text-amber-800 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-200"
+                  onClick={submitBoard}
+                >
+                  Submit
+                </button>
+                <button
                   className="rounded-full bg-blue-600 px-3 py-1 font-bold text-white hover:bg-blue-700"
                   onClick={startNewBoard}
                   disabled={!trie || isRollingBoard}
@@ -811,6 +1105,12 @@ export default function RandomBoardClient() {
                 </button>
               </div>
             </div>
+
+            {persistenceMessage && (
+              <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-2 text-sm font-semibold text-gray-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+                {persistenceMessage}
+              </div>
+            )}
 
             <div className="wb-board-stage relative">
               <SquareBoard
@@ -882,6 +1182,7 @@ export default function RandomBoardClient() {
             <h2 className="mb-3 text-lg font-black">Round stats</h2>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <Stat label="Words" value={`${foundWordList.length}/${wordListTotal}`} />
+              <Stat label="Abundance" value={boardAbundanceLabel(currentAbundance)} />
               <Stat label="Score" value={isPractice ? 'off' : totalScore.toString()} />
               <Stat label="Base" value={isPractice ? 'off' : baseScore.toString()} />
               <Stat label="Evolution" value={isEvolution ? evolutionBonusScore.toString() : '—'} />
