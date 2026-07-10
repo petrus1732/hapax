@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { arenaMetricForWord, filterWordGroupsByStatus, registerFirstSwipe } from './random-board-ui';
+import {
+  arenaMetricForWord,
+  filterWordGroupsByStatus,
+  formatWordListScore,
+  registerFirstSwipe,
+} from './random-board-ui';
 
 describe('word-list filtering', () => {
   const groups = [[], [], ['AT', 'TO'], ['ATE', 'TEA']];
@@ -9,6 +14,17 @@ describe('word-list filtering', () => {
     expect(filterWordGroupsByStatus(groups, slidWords, 'all')).toBe(groups);
     expect(filterWordGroupsByStatus(groups, slidWords, 'found')).toEqual([[], [], ['AT'], ['TEA']]);
     expect(filterWordGroupsByStatus(groups, slidWords, 'missed')).toEqual([[], [], ['TO'], ['ATE']]);
+  });
+});
+
+describe('word-list score labels', () => {
+  it('shows maximum score alone for an unswiped word', () => {
+    expect(formatWordListScore(42)).toBe('42');
+  });
+
+  it('shows the manually swiped score over the maximum score', () => {
+    expect(formatWordListScore(42, 31)).toBe('31/42');
+    expect(formatWordListScore(12, 0)).toBe('0/12');
   });
 });
 

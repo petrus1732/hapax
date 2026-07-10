@@ -10,6 +10,7 @@ import {
   WordListFilter,
   arenaMetricForWord,
   filterWordGroupsByStatus,
+  formatWordListScore,
   registerFirstSwipe,
 } from '@/app/lib/random-board-ui';
 import {
@@ -167,6 +168,7 @@ export default function RandomBoardClient() {
   const [words, setWords] = useState<string[][]>([]);
   const [swiped, setSwiped] = useState<Record<string, boolean>>({});
   const [slidWords, setSlidWords] = useState<Record<string, boolean>>({});
+  const [slidWordScores, setSlidWordScores] = useState<Record<string, number>>({});
   const [foundWords, setFoundWords] = useState<Record<string, FoundWord>>({});
   const [manualAcceptedCount, setManualAcceptedCount] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
@@ -189,6 +191,7 @@ export default function RandomBoardClient() {
   const inspirationReservedWordsRef = useRef<Set<string>>(new Set());
   const inspirationAnimationCountRef = useRef(0);
   const slidWordsRef = useRef<Set<string>>(new Set());
+  const maximumWordScoreCacheRef = useRef<{ key: string; scores: Record<string, number> } | null>(null);
   const [trainingSeedWord, setTrainingSeedWord] = useState<string | null>(null);
   const [persistenceMessage, setPersistenceMessage] = useState<string>('');
   const [playRecordId, setPlayRecordId] = useState<string | null>(null);
@@ -226,6 +229,29 @@ export default function RandomBoardClient() {
     [slidWords, wordListGroups],
   );
   const wordListUnswipedCount = wordListTotal - wordListSwipedCount;
+  const maximumWordScores = useMemo(() => {
+    if (!board || !openWordList) return {};
+
+    const cacheKey = `${board.size}:${board.letters}:${allBoardWords.length}:${bonuses.map((bonus) => bonus ?? '-').join(',')}:${
+      lengthBonus5Plus ? '5+' : 'normal'
+    }`;
+    if (maximumWordScoreCacheRef.current?.key === cacheKey) {
+      return maximumWordScoreCacheRef.current.scores;
+    }
+
+    const next: Record<string, number> = {};
+    for (const word of allBoardWords) {
+      const route = bestRouteForWord(board.size, board.letters, word, bonuses, {
+        lengthBonus5Plus,
+        // Word-list scores are route-analysis information, even in untimed practice modes.
+        practice: false,
+      });
+      if (route) next[word] = route.score;
+    }
+
+    maximumWordScoreCacheRef.current = { key: cacheKey, scores: next };
+    return next;
+  }, [allBoardWords, board, bonuses, lengthBonus5Plus, openWordList]);
   const currentAbundance = classifyBoardAbundance(allBoardWords.length);
   const foundWordList = useMemo(() => Object.values(foundWords), [foundWords]);
   const inspirationCharge = calculateInspirationChargeState(manualAcceptedCount, hintsUsed);
@@ -305,6 +331,7 @@ export default function RandomBoardClient() {
   const resetRoundState = useCallback(() => {
     setSwiped({});
     setSlidWords({});
+    setSlidWordScores({});
     setFoundWords({});
     setManualAcceptedCount(0);
     setHintsUsed(0);
@@ -325,6 +352,7 @@ export default function RandomBoardClient() {
     inspirationReservedWordsRef.current.clear();
     inspirationAnimationCountRef.current = 0;
     slidWordsRef.current.clear();
+    maximumWordScoreCacheRef.current = null;
     setIsInspirationAnimating(false);
   }, []);
 
@@ -570,7 +598,15 @@ export default function RandomBoardClient() {
       if (!isDictionaryWord) return { accepted: false, color: 'red' };
 
       const isFirstSwipe = registerFirstSwipe(slidWordsRef.current, word);
-      if (isFirstSwipe) setSlidWords((current) => ({ ...current, [word]: true }));
+      if (isFirstSwipe) {
+        const slidScore = calculatePathScore(board?.letters ?? '', path, bonuses, {
+          lengthBonus5Plus,
+          // Keep route comparison useful even when the current mode disables scoring.
+          practice: false,
+        });
+        setSlidWords((current) => ({ ...current, [word]: true }));
+        setSlidWordScores((current) => ({ ...current, [word]: slidScore }));
+      }
 
       if (isAlreadyFound) {
         recordManualWord({ word, path, score: 0 });
@@ -1425,6 +1461,9 @@ export default function RandomBoardClient() {
                 reveal unswiped words
               </label>
             )}
+            <div className="mb-3 text-xs font-semibold text-gray-500 dark:text-zinc-400">
+              Score format: yours/max for manually swiped words; otherwise the maximum route score.
+            </div>
             <div className="max-h-[70vh] overflow-auto pr-1">
               {filteredWordListCount === 0 && (
                 <div className="rounded-xl bg-gray-50 p-4 text-center text-sm font-semibold text-gray-500 dark:bg-zinc-900">
@@ -1439,16 +1478,28 @@ export default function RandomBoardClient() {
                     <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4">
                       {group.map((word) => {
                         const found = foundWords[word];
+                        const wasManuallySwiped = Boolean(slidWords[word]);
+                        const isVisible = showFullWordList || Boolean(found) || wasManuallySwiped || !mask;
+                        const maximumScore = maximumWordScores[word] ?? 0;
+                        const scoreLabel = formatWordListScore(
+                          maximumScore,
+                          wasManuallySwiped ? (slidWordScores[word] ?? 0) : undefined,
+                        );
+
                         return (
                           <button
                             key={word}
-                            className={`rounded-lg px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-800 ${found ? 'font-bold text-green-600' : 'text-gray-500'}`}
+                            className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-800 ${found ? 'font-bold text-green-600' : 'text-gray-500'}`}
                             onClick={() => showWordRouteFromModal(word)}
                           >
-                            {showFullWordList || found || !mask ? word : '*'.repeat(word.length)}
-                            {found?.score ? (
-                              <span className="ml-1 text-xs opacity-70">{found.score}</span>
-                            ) : null}
+                            <span className="min-w-0 truncate">
+                              {isVisible ? word : '*'.repeat(word.length)}
+                            </span>
+                            {isVisible && (
+                              <span className="shrink-0 text-xs font-bold tabular-nums opacity-75">
+                                {scoreLabel}
+                              </span>
+                            )}
                           </button>
                         );
                       })}

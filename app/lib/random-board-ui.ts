@@ -27,3 +27,7 @@ export function registerFirstSwipe(seenWords: Set<string>, word: string): boolea
   seenWords.add(word);
   return true;
 }
+
+export function formatWordListScore(maximumScore: number, swipedScore?: number): string {
+  return swipedScore === undefined ? `${maximumScore}` : `${swipedScore}/${maximumScore}`;
+}
