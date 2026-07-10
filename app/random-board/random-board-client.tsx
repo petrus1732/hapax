@@ -37,7 +37,7 @@ import {
   randomBoardLetters,
   wordCountMatchesAbundance,
 } from '@/app/lib/wordblitz';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type ArenaSubmode = 'arena-gladiator' | 'arena-tight-rope' | 'arena-8-plus-superior';
 type RoundPhase = 'idle' | 'countdown' | 'playing' | 'finished';
@@ -178,6 +178,8 @@ export default function RandomBoardClient() {
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
   const [isInspirationAnimating, setIsInspirationAnimating] = useState(false);
   const [isInspirationClosing, setIsInspirationClosing] = useState(false);
+  const inspirationReservedWordsRef = useRef<Set<string>>(new Set());
+  const inspirationAnimationCountRef = useRef(0);
   const [trainingSeedWord, setTrainingSeedWord] = useState<string | null>(null);
   const [persistenceMessage, setPersistenceMessage] = useState<string>('');
   const [playRecordId, setPlayRecordId] = useState<string | null>(null);
@@ -296,6 +298,8 @@ export default function RandomBoardClient() {
     setPlayRecordId(null);
     setCompletedRecordId(null);
     setIsInspirationClosing(false);
+    inspirationReservedWordsRef.current.clear();
+    inspirationAnimationCountRef.current = 0;
     setIsInspirationAnimating(false);
   }, []);
 
@@ -619,7 +623,7 @@ export default function RandomBoardClient() {
     (limit: number): FoundWord[] => {
       if (!board || limit <= 0) return [];
 
-      const alreadyChosen = new Set(Object.keys(foundWords));
+      const alreadyChosen = new Set([...Object.keys(foundWords), ...inspirationReservedWordsRef.current]);
       const candidates = flatWords.filter((word) => word.length >= 5 && !alreadyChosen.has(word));
       const chosen: FoundWord[] = [];
 
@@ -635,6 +639,7 @@ export default function RandomBoardClient() {
         if (!route) continue;
 
         alreadyChosen.add(word);
+        inspirationReservedWordsRef.current.add(word);
         chosen.push({
           word,
           path: route.path,
@@ -649,19 +654,27 @@ export default function RandomBoardClient() {
   );
 
   const renderInspirationHints = useCallback(async (hints: FoundWord[]) => {
+    if (hints.length === 0) return;
+
+    inspirationAnimationCountRef.current += 1;
     setIsInspirationAnimating(true);
 
-    for (const hint of hints) {
-      for (let length = 1; length <= hint.path.length; length += 1) {
-        setHighlightedRoute(hint.path.slice(0, length));
+    try {
+      for (const hint of hints) {
+        for (let length = 1; length <= hint.path.length; length += 1) {
+          setHighlightedRoute(hint.path.slice(0, length));
+          await wait(ROUTE_ANIMATION_STEP_MS);
+        }
+
         await wait(ROUTE_ANIMATION_STEP_MS);
       }
-
-      await wait(ROUTE_ANIMATION_STEP_MS);
+    } finally {
+      inspirationAnimationCountRef.current = Math.max(0, inspirationAnimationCountRef.current - 1);
+      if (inspirationAnimationCountRef.current === 0) {
+        setHighlightedRoute([]);
+        setIsInspirationAnimating(false);
+      }
     }
-
-    setHighlightedRoute([]);
-    setIsInspirationAnimating(false);
   }, []);
 
   const finishInspirationRound = useCallback(async () => {
@@ -729,8 +742,8 @@ export default function RandomBoardClient() {
     return () => window.clearInterval(timer);
   }, [activeMode, availableHints, board, finished, finishInspirationRound, hasTimer, roundPhase, timeLeft]);
 
-  const useInspirationHint = useCallback(async () => {
-    if (!board || availableHints <= 0 || isInspirationAnimating || isInspirationClosing) return;
+  const useInspirationHint = useCallback(() => {
+    if (!board || availableHints <= 0 || isInspirationClosing) return;
 
     const [hint] = chooseInspirationHints(1);
     if (!hint) {
@@ -739,20 +752,20 @@ export default function RandomBoardClient() {
       return;
     }
 
+    // Apply the hint immediately. The route animation is intentionally fire-and-forget,
+    // so players can spend several queued inspiration hints without waiting.
     addFoundWord(hint);
     setHintsUsed((current) => current + 1);
-    await renderInspirationHints([hint]);
-
     setSelectedRouteInfo(
       `${hint.word} · swipe ${formatRoute(hint.path)}${hint.score ? ` · ${hint.score} pts` : ''}`,
     );
     setStatusMessage(`Inspiration found ${hint.word}${hint.score ? ` for ${hint.score} points` : ''}.`);
+    void renderInspirationHints([hint]);
   }, [
     addFoundWord,
     availableHints,
     board,
     chooseInspirationHints,
-    isInspirationAnimating,
     isInspirationClosing,
     renderInspirationHints,
   ]);
@@ -1245,7 +1258,6 @@ export default function RandomBoardClient() {
                       availableHints <= 0 ||
                       finished ||
                       roundPhase !== 'playing' ||
-                      isInspirationAnimating ||
                       isInspirationClosing ||
                       (hasTimer && timeLeft <= 0)
                     }
