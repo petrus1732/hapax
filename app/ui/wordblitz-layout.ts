@@ -1,4 +1,4 @@
-export const WORD_BLITZ_BOARD_SIZE_PX = 328;
+export const WORD_BLITZ_BOARD_SIZE_PX = 344;
 
 const WORD_BLITZ_SAFE_AREA_RATIO = 0.054;
 const WORD_BLITZ_LETTER_MARGIN_RATIO = 0.015;
@@ -16,7 +16,10 @@ export type WordBlitzBoardMetrics = {
   tileRadiusEm: number;
 };
 
-export function getWordBlitzBoardMetrics(size: number, boardSize = WORD_BLITZ_BOARD_SIZE_PX): WordBlitzBoardMetrics {
+export function getWordBlitzBoardMetrics(
+  size: number,
+  boardSize = WORD_BLITZ_BOARD_SIZE_PX,
+): WordBlitzBoardMetrics {
   const safeAreaAdjustedSize = boardSize - Math.max(40, boardSize * 2 * WORD_BLITZ_SAFE_AREA_RATIO);
   const rawLetterMargin = Math.floor(safeAreaAdjustedSize * WORD_BLITZ_LETTER_MARGIN_RATIO);
   const letterMargin = Math.max(1, rawLetterMargin);

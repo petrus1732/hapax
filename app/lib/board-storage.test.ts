@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBonuses, parseBonuses, serializeBonuses, validatePersistedBoardPayload } from './board-storage';
+import {
+  normalizeBonuses,
+  parseBonuses,
+  serializeBonuses,
+  validatePersistedBoardPayload,
+} from './board-storage';
 
 describe('board storage helpers', () => {
   it('normalizes bonus arrays to the requested board size and drops invalid tokens', () => {
-    expect(normalizeBonuses(['dl', 'TW', 'bad', '', undefined], 6)).toEqual(['dl', 'tw', null, null, null, null]);
+    expect(normalizeBonuses(['dl', 'TW', 'bad', '', undefined], 6)).toEqual([
+      'dl',
+      'tw',
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('round-trips serialized bonuses without changing legal bonus positions', () => {

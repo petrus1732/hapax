@@ -340,7 +340,8 @@ export default function RandomBoardClient() {
     };
 
     const avoidHardLetters = boardAbundance === 'rich' || boardAbundance === 'very-rich';
-    const richBias = boardAbundance === 'very-rich' ? 'very-rich' : boardAbundance === 'rich' ? 'rich' : undefined;
+    const richBias =
+      boardAbundance === 'very-rich' ? 'very-rich' : boardAbundance === 'rich' ? 'rich' : undefined;
     const generateCandidateLetters = (): Candidate =>
       activeMode === 'training'
         ? generateTrainingBoardCandidate(wordlist, trainingLetter)
@@ -545,7 +546,12 @@ export default function RandomBoardClient() {
       fetch('/api/profile/words', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: entry.word, path: entry.path, score: entry.score, inspired: entry.inspired }),
+        body: JSON.stringify({
+          word: entry.word,
+          path: entry.path,
+          score: entry.score,
+          inspired: entry.inspired,
+        }),
       }).catch(() => undefined);
     },
     [session?.user],
@@ -738,7 +744,6 @@ export default function RandomBoardClient() {
       trainingSeedWord: trainingSeedWord ?? board.trainingSeedWord ?? null,
     };
   };
-
 
   const saveRoundProgress = useCallback(
     async (completed: boolean) => {
@@ -956,7 +961,8 @@ export default function RandomBoardClient() {
               ))}
             </div>
             <p className="mt-2 text-xs text-indigo-700/80 dark:text-indigo-200/80">
-              Rich and Very Rich boards use common-letter rerolls, a looser full-tile-coverage rule, and avoid Q/J/X on non-training rerolls.
+              Rich and Very Rich boards use common-letter rerolls, a looser full-tile-coverage rule, and avoid
+              Q/J/X on non-training rerolls.
             </p>
           </div>
 

@@ -120,7 +120,10 @@ export type RegisterState = {
   message?: string;
 };
 
-export async function registerUser(prevState: RegisterState | undefined, formData: FormData): Promise<RegisterState | undefined> {
+export async function registerUser(
+  prevState: RegisterState | undefined,
+  formData: FormData,
+): Promise<RegisterState | undefined> {
   const validatedFields = RegisterUser.safeParse({
     username: formData.get('username'),
     password: formData.get('password'),
@@ -141,9 +144,13 @@ export async function registerUser(prevState: RegisterState | undefined, formDat
 
   try {
     await ensureUsersTable();
-    const existing = await sql`SELECT id FROM users WHERE lower(name) = lower(${name}) OR lower(email) = lower(${email}) LIMIT 1`;
+    const existing =
+      await sql`SELECT id FROM users WHERE lower(name) = lower(${name}) OR lower(email) = lower(${email}) LIMIT 1`;
     if (existing.rows.length > 0) {
-      return { errors: { username: ['This name is already taken.'] }, message: 'Please choose another name.' };
+      return {
+        errors: { username: ['This name is already taken.'] },
+        message: 'Please choose another name.',
+      };
     }
 
     await sql`
@@ -158,7 +165,8 @@ export async function registerUser(prevState: RegisterState | undefined, formDat
   try {
     await signIn('credentials', formData);
   } catch (error) {
-    if (error instanceof AuthError) return { message: 'Account created, but automatic login failed. Try logging in.' };
+    if (error instanceof AuthError)
+      return { message: 'Account created, but automatic login failed. Try logging in.' };
     throw error;
   }
 }

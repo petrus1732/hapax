@@ -67,7 +67,6 @@ function parseFoundWords(value?: string | null): FoundWordRecord[] {
   }
 }
 
-
 function formatDate(value?: string | null) {
   if (!value) return '—';
   const date = new Date(value);
@@ -160,13 +159,17 @@ export default function ProfileBoardsClient() {
                   >
                     <td className="px-3 py-3">
                       <div className="font-bold">{board.board_name}</div>
-                      <div className="font-mono text-xs text-gray-500 dark:text-zinc-400">{board.letters}</div>
+                      <div className="font-mono text-xs text-gray-500 dark:text-zinc-400">
+                        {board.letters}
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {board.source_mode}
                       {board.round_mode ? <div className="text-xs opacity-60">{board.round_mode}</div> : null}
                       {board.personal_best_eligible ? (
-                        <div className="mt-1 text-xs font-bold text-emerald-600 dark:text-emerald-300">PB eligible</div>
+                        <div className="mt-1 text-xs font-bold text-emerald-600 dark:text-emerald-300">
+                          PB eligible
+                        </div>
                       ) : null}
                     </td>
                     <td className="px-3 py-3">
@@ -231,7 +234,9 @@ export default function ProfileBoardsClient() {
                         .map((item) => (
                           <span key={item.word} className="rounded-full bg-white px-2 py-1 dark:bg-zinc-950">
                             {item.word}
-                            {item.inspired ? <span className="ml-1 text-xs text-purple-500">hint</span> : null}
+                            {item.inspired ? (
+                              <span className="ml-1 text-xs text-purple-500">hint</span>
+                            ) : null}
                           </span>
                         ))}
                     </div>

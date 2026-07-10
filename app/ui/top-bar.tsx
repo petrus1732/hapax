@@ -32,7 +32,10 @@ export async function TopBar() {
         <div className="mr-1 flex items-center">{session?.user ? session?.user?.name : ''}</div>
         {!session?.user ? (
           <>
-            <Link href="/register" className="hidden rounded-lg px-3 py-2 text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 sm:block">
+            <Link
+              href="/register"
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 sm:block"
+            >
               register
             </Link>
             <form

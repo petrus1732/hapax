@@ -141,7 +141,6 @@ describe('Word Blitz constants and base helpers', () => {
   });
 });
 
-
 describe('board abundance helpers', () => {
   it('classifies board word counts at the requested poor/normal/rich/very-rich boundaries', () => {
     expect(classifyBoardAbundance(150)).toBe('poor');
