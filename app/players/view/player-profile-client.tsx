@@ -26,8 +26,8 @@ type HuntingRecommendation = {
   score: number;
 };
 
-type ProfileSummary = {
-  user: { name: string | null; email: string | null };
+type PublicProfileSummary = {
+  user: { id: string; name: string | null };
   counts: {
     playedBoards: number;
     completedTimedRounds: number;
@@ -44,6 +44,11 @@ type ProfileSummary = {
     huntingRecommendations: HuntingRecommendation[];
   };
 };
+
+function getUserIdFromLocation() {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('userId') ?? '';
+}
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -85,12 +90,24 @@ function BestCard({ title, round, empty }: { title: string; round: BestRound | n
   );
 }
 
-export default function ProfileClient() {
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">
+        {label}
+      </div>
+      <div className="mt-2 text-3xl font-black">{value}</div>
+    </div>
+  );
+}
+
+export default function PlayerProfileClient() {
   const { data: session, status } = useClientSession();
+  const [userId, setUserId] = useState('');
   const [includeInspiration, setIncludeInspiration] = useState(true);
   const [includeBlitz, setIncludeBlitz] = useState(true);
-  const [summary, setSummary] = useState<ProfileSummary | null>(null);
-  const [message, setMessage] = useState('Loading profile...');
+  const [summary, setSummary] = useState<PublicProfileSummary | null>(null);
+  const [message, setMessage] = useState('Loading player profile...');
 
   const query = useMemo(
     () => `includeInspiration=${includeInspiration}&includeBlitz=${includeBlitz}`,
@@ -98,34 +115,47 @@ export default function ProfileClient() {
   );
 
   useEffect(() => {
+    setUserId(getUserIdFromLocation());
+  }, []);
+
+  useEffect(() => {
     if (status === 'loading') return;
     if (!session?.user) {
       setSummary(null);
-      setMessage('Please log in to see your profile.');
+      setMessage('Please log in to view player profiles.');
+      return;
+    }
+    if (!userId) {
+      setSummary(null);
+      setMessage('No player was selected.');
       return;
     }
 
-    setMessage('Loading profile...');
-    fetch(`/api/profile/summary?${query}`)
+    setMessage('Loading player profile...');
+    fetch(`/api/players/${encodeURIComponent(userId)}/summary?${query}`)
       .then(async (response) => {
-        const data = (await response.json()) as ProfileSummary & { error?: string };
-        if (!response.ok) throw new Error(data.error ?? 'Failed to load profile.');
+        const data = (await response.json()) as PublicProfileSummary & { error?: string };
+        if (!response.ok) throw new Error(data.error ?? 'Failed to load player profile.');
         setSummary(data);
         setMessage('');
       })
       .catch((error) => {
         setSummary(null);
-        setMessage(error instanceof Error ? error.message : 'Failed to load profile.');
+        setMessage(error instanceof Error ? error.message : 'Failed to load player profile.');
       });
-  }, [query, session?.user, status]);
+  }, [query, session?.user, status, userId]);
 
   if (message && !summary) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white/80 p-6 text-sm dark:border-zinc-800 dark:bg-zinc-950/70">
         {message}{' '}
-        {!session?.user && (
+        {!session?.user ? (
           <Link href="/login" className="font-bold text-blue-600 hover:underline dark:text-blue-300">
             Log in
+          </Link>
+        ) : (
+          <Link href="/players" className="font-bold text-blue-600 hover:underline dark:text-blue-300">
+            Search players
           </Link>
         )}
       </div>
@@ -139,24 +169,29 @@ export default function ProfileClient() {
       <section className="rounded-3xl border border-gray-200 bg-white/80 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h1 className="text-3xl font-black">My profile</h1>
-            <div className="mt-2 text-sm text-gray-600 dark:text-zinc-300">
-              <div>Name: {summary.user.name ?? '—'}</div>
-              <div>Email: {summary.user.email ?? '—'}</div>
+            <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">
+              Public profile
             </div>
+            <h1 className="text-3xl font-black">
+              {summary.user.name ?? `Player ${summary.user.id.slice(0, 8)}`}
+            </h1>
+            <p className="mt-2 text-sm text-gray-600 dark:text-zinc-300">
+              Public play history, personal bests, dictionary record, and hunting suggestions. Passwords and
+              credentials are not exposed.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
               href="/players"
-              className="rounded-2xl bg-gray-100 px-5 py-3 text-center font-bold text-gray-950 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
+              className="rounded-2xl bg-gray-100 px-4 py-3 text-center font-bold text-gray-950 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
             >
-              Find players
+              Search players
             </Link>
             <Link
-              href="/profile/boards"
+              href={`/players/boards?userId=${encodeURIComponent(summary.user.id)}&name=${encodeURIComponent(summary.user.name ?? '')}`}
               className="rounded-2xl bg-blue-600 px-5 py-3 text-center font-bold text-white shadow hover:bg-blue-700"
             >
-              Look at my boards
+              Look at boards
             </Link>
           </div>
         </div>
@@ -214,8 +249,7 @@ export default function ProfileClient() {
         <div className="rounded-3xl border border-gray-200 bg-white/80 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <h2 className="text-2xl font-black">Dictionary record</h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-zinc-300">
-            Words are recorded from accepted manual swipes. Inspiration auto-hints are not counted as manual
-            hunts.
+            Recent manually found dictionary words.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {summary.dictionary.recentWords.length === 0 ? (
@@ -238,7 +272,7 @@ export default function ProfileClient() {
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
           <h2 className="text-2xl font-black text-amber-800 dark:text-amber-100">Hunting top 3</h2>
           <p className="mt-1 text-sm text-amber-800/75 dark:text-amber-100/75">
-            Heuristic: look for one-letter extensions or nearby swaps from your known words.
+            Nearby words this player has not recorded yet.
           </p>
           <div className="mt-4 space-y-3">
             {summary.dictionary.huntingRecommendations.map((item, index) => (
@@ -253,17 +287,6 @@ export default function ProfileClient() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-      <div className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-zinc-400">
-        {label}
-      </div>
-      <div className="mt-2 text-3xl font-black">{value}</div>
     </div>
   );
 }

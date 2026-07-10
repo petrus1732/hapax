@@ -35,6 +35,12 @@ export default function Home() {
         >
           Profile
         </Link>
+        <Link
+          href="/players"
+          className="flex h-16 grow items-center justify-center gap-2 rounded-md border border-gray-300 p-3 text-xl font-medium hover:bg-sky-100 hover:text-blue-600 dark:border-neutral-700"
+        >
+          Players
+        </Link>
       </div>
     </main>
   );

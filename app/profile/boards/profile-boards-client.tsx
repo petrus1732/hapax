@@ -73,11 +73,23 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-export default function ProfileBoardsClient() {
+type ProfileBoardsClientProps = {
+  userId?: string;
+  ownerName?: string;
+  backHref?: string;
+  backLabel?: string;
+};
+
+export default function ProfileBoardsClient({
+  userId,
+  ownerName,
+  backHref = '/profile',
+  backLabel = 'Back to profile',
+}: ProfileBoardsClientProps = {}) {
   const { data: session, status } = useClientSession();
   const [boards, setBoards] = useState<ProfileBoardRow[]>([]);
   const [selected, setSelected] = useState<ProfileBoardRow | null>(null);
-  const [message, setMessage] = useState('Loading your boards...');
+  const [message, setMessage] = useState(userId ? 'Loading player boards...' : 'Loading your boards...');
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -86,16 +98,21 @@ export default function ProfileBoardsClient() {
       return;
     }
 
-    fetch('/api/profile/boards')
+    const endpoint = userId ? `/api/players/${encodeURIComponent(userId)}/boards` : '/api/profile/boards';
+    fetch(endpoint)
       .then(async (response) => {
-        const data = (await response.json()) as { boards?: ProfileBoardRow[]; error?: string };
-        if (!response.ok) throw new Error(data.error ?? 'Failed to load your boards.');
+        const data = (await response.json()) as {
+          player?: { id: string; name: string | null };
+          boards?: ProfileBoardRow[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error ?? 'Failed to load boards.');
         setBoards(data.boards ?? []);
         setSelected((data.boards ?? [])[0] ?? null);
         setMessage((data.boards ?? []).length === 0 ? 'No auto-saved boards yet.' : '');
       })
-      .catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to load your boards.'));
-  }, [session?.user, status]);
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to load boards.'));
+  }, [session?.user, status, userId]);
 
   const selectedBonuses: BonusOrNull[] = useMemo(
     () => parseBonuses(selected?.bonuses, (selected?.size ?? BOARD_SIZE) * (selected?.size ?? BOARD_SIZE)),
@@ -122,13 +139,13 @@ export default function ProfileBoardsClient() {
     <div className="w-full space-y-5">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-black">My boards</h1>
+          <h1 className="text-3xl font-black">{userId ? `${ownerName ?? 'Player'} boards` : 'My boards'}</h1>
           <p className="text-sm text-gray-600 dark:text-zinc-300">
             Every generated board is auto-saved for logged-in users. Bonus positions are preserved.
           </p>
         </div>
-        <Link href="/profile" className="font-bold text-blue-600 hover:underline dark:text-blue-300">
-          Back to profile
+        <Link href={backHref} className="font-bold text-blue-600 hover:underline dark:text-blue-300">
+          {backLabel}
         </Link>
       </div>
 
