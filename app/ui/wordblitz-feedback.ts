@@ -1,6 +1,6 @@
 type VibrationPattern = number | number[];
 
-const NEW_WORD_PATTERN: VibrationPattern = [120, 35, 120, 35, 160];
+const NEW_WORD_PATTERN: VibrationPattern = [100, 35, 100];
 
 function vibrate(pattern: VibrationPattern): void {
   if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
