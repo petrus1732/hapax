@@ -186,8 +186,8 @@ export default function RandomBoardClient() {
   const activeMode = mode;
   const effectiveRound: RoundMode =
     activeMode === 'quadruple-bonus' ? 'r4' : isRoundMode(activeMode) ? roundMode : 'practice';
-  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite' && activeMode !== 'training';
-  const personalBestEligible = hasTimer && activeMode !== 'training';
+  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite';
+  const personalBestEligible = hasTimer;
   const roundDuration = activeMode === 'blitz' ? BLITZ_SECONDS : hasTimer ? ROUND_SECONDS : 0;
   const lengthBonus5Plus = activeMode === 'length-bonus-5-plus';
   const isPractice = activeMode === 'practice' || activeMode === 'infinite';

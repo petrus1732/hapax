@@ -7,10 +7,15 @@ import {
   ROUND_BONUS_SPECS,
   ROUND_SECONDS,
   TRAINING_LETTERS,
+  VERY_RICH_FALLBACK_BOARDS,
+  WORD_RICH_FALLBACK_BOARD,
   bestRouteForWord,
+  boardAbundanceDistance,
+  boardAbundanceLabel,
   bonusLabel,
   calculatePathScore,
   calculateInspirationChargeState,
+  classifyBoardAbundance,
   countBonuses,
   fallbackBoardForMode,
   filterCountableWordsForMode,
@@ -21,6 +26,7 @@ import {
   generateTrainingBoard,
   groupWordsByLength,
   isAdjacent,
+  wordCountMatchesAbundance,
   lengthPoints,
   letterMultiplier,
   letterPoints,
@@ -132,6 +138,33 @@ describe('Word Blitz constants and base helpers', () => {
     expect(fallbackBoardForMode('normal')).toHaveLength(16);
     expect(fallbackBoardForMode('training', 'Q')).toContain('Q');
     expect(fallbackBoardForMode('training', 'J')).toContain('J');
+  });
+});
+
+
+describe('board abundance helpers', () => {
+  it('classifies board word counts at the requested poor/normal/rich/very-rich boundaries', () => {
+    expect(classifyBoardAbundance(150)).toBe('poor');
+    expect(classifyBoardAbundance(151)).toBe('normal');
+    expect(classifyBoardAbundance(250)).toBe('normal');
+    expect(classifyBoardAbundance(251)).toBe('rich');
+    expect(classifyBoardAbundance(400)).toBe('rich');
+    expect(classifyBoardAbundance(401)).toBe('very-rich');
+  });
+
+  it('checks board abundance matches and reports distance to the requested bucket', () => {
+    expect(boardAbundanceLabel('very-rich')).toBe('Very Rich');
+    expect(wordCountMatchesAbundance(401, 'very-rich')).toBe(true);
+    expect(wordCountMatchesAbundance(400, 'very-rich')).toBe(false);
+    expect(boardAbundanceDistance(400, 'very-rich')).toBe(1);
+    expect(boardAbundanceDistance(275, 'rich')).toBe(0);
+    expect(boardAbundanceDistance(150, 'normal')).toBe(1);
+  });
+
+  it('uses a dedicated very-rich fallback instead of silently downgrading to the rich fallback board', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(fallbackBoardForMode('normal', 'Q', 'very-rich')).toBe(VERY_RICH_FALLBACK_BOARDS[0]);
+    expect(fallbackBoardForMode('normal', 'Q', 'very-rich')).not.toBe(WORD_RICH_FALLBACK_BOARD);
   });
 });
 

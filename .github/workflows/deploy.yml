@@ -75,6 +75,7 @@ jobs:
           rm -rf app/boards
           rm -rf app/create
           rm -rf app/login
+          rm -rf app/register
           rm -rf app/dictionary
           rm -f middleware.ts
           rm -f app/lib/actions.ts
@@ -82,6 +83,7 @@ jobs:
           rm -f app/lib/getTrie.ts
           rm -f app/ui/top-bar.tsx
           rm -f app/ui/login-form.tsx
+          rm -f app/ui/register-form.tsx
 
           cat > app/layout.tsx <<'EOF'
           import type { Metadata } from 'next';
