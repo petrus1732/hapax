@@ -42,7 +42,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 type ArenaSubmode = 'arena-gladiator' | 'arena-tight-rope' | 'arena-8-plus-superior';
 type RoundPhase = 'idle' | 'countdown' | 'playing' | 'finished';
 
-const ROUTE_ANIMATION_STEP_MS = 1000 / 6;
+const ROUTE_ANIMATION_STEP_MS = 1000 / 12;
 
 type FoundWord = {
   word: string;
@@ -177,6 +177,7 @@ export default function RandomBoardClient() {
   const [highlightedRoute, setHighlightedRoute] = useState<number[]>([]);
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
   const [isInspirationAnimating, setIsInspirationAnimating] = useState(false);
+  const [isInspirationClosing, setIsInspirationClosing] = useState(false);
   const [trainingSeedWord, setTrainingSeedWord] = useState<string | null>(null);
   const [persistenceMessage, setPersistenceMessage] = useState<string>('');
   const [playRecordId, setPlayRecordId] = useState<string | null>(null);
@@ -210,10 +211,7 @@ export default function RandomBoardClient() {
   const totalScore = baseScore + (isEvolution ? evolutionBonusScore : 0);
   const bonusCounts = useMemo(() => countBonuses(bonuses), [bonuses]);
   const canSwipe =
-    roundPhase === 'playing' &&
-    !finished &&
-    !(hasTimer && timeLeft <= 0 && activeMode === 'inspiration' && availableHints > 0) &&
-    !(hasTimer && timeLeft <= 0);
+    roundPhase === 'playing' && !finished && !isInspirationClosing && !(hasTimer && timeLeft <= 0);
 
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');
@@ -263,29 +261,6 @@ export default function RandomBoardClient() {
   }, [board]);
 
   useEffect(() => {
-    if (!hasTimer || finished || !board || roundPhase !== 'playing') return;
-
-    if (timeLeft <= 0) {
-      if (activeMode === 'inspiration' && availableHints > 0) {
-        setStatusMessage(
-          `Time is up — use your ${availableHints} remaining hint${availableHints === 1 ? '' : 's'} to close the round.`,
-        );
-        return;
-      }
-      setFinished(true);
-      setRoundPhase('finished');
-      setStatusMessage('Round finished.');
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setTimeLeft((current) => Math.max(0, current - 0.1));
-    }, 100);
-
-    return () => window.clearInterval(timer);
-  }, [activeMode, availableHints, board, finished, hasTimer, roundPhase, timeLeft]);
-
-  useEffect(() => {
     if (roundPhase !== 'countdown') return;
 
     if (countdown <= 0) {
@@ -320,6 +295,8 @@ export default function RandomBoardClient() {
     setPersistenceMessage('');
     setPlayRecordId(null);
     setCompletedRecordId(null);
+    setIsInspirationClosing(false);
+    setIsInspirationAnimating(false);
   }, []);
 
   const startNewBoard = useCallback(async () => {
@@ -638,64 +615,147 @@ export default function RandomBoardClient() {
     ],
   );
 
+  const chooseInspirationHints = useCallback(
+    (limit: number): FoundWord[] => {
+      if (!board || limit <= 0) return [];
+
+      const alreadyChosen = new Set(Object.keys(foundWords));
+      const candidates = flatWords.filter((word) => word.length >= 5 && !alreadyChosen.has(word));
+      const chosen: FoundWord[] = [];
+
+      while (chosen.length < limit && candidates.length > 0) {
+        const index = Math.floor(Math.random() * candidates.length);
+        const [word] = candidates.splice(index, 1);
+
+        const route = bestRouteForWord(board.size, board.letters, word, bonuses, {
+          lengthBonus5Plus,
+          practice: isPractice,
+        });
+
+        if (!route) continue;
+
+        alreadyChosen.add(word);
+        chosen.push({
+          word,
+          path: route.path,
+          score: route.score,
+          inspired: true,
+        });
+      }
+
+      return chosen;
+    },
+    [board, bonuses, flatWords, foundWords, isPractice, lengthBonus5Plus],
+  );
+
+  const renderInspirationHints = useCallback(async (hints: FoundWord[]) => {
+    setIsInspirationAnimating(true);
+
+    for (const hint of hints) {
+      for (let length = 1; length <= hint.path.length; length += 1) {
+        setHighlightedRoute(hint.path.slice(0, length));
+        await wait(ROUTE_ANIMATION_STEP_MS);
+      }
+
+      await wait(ROUTE_ANIMATION_STEP_MS);
+    }
+
+    setHighlightedRoute([]);
+    setIsInspirationAnimating(false);
+  }, []);
+
+  const finishInspirationRound = useCallback(async () => {
+    if (!board || isInspirationClosing || finished) return;
+
+    setIsInspirationClosing(true);
+    setStatusMessage(
+      `Time is up — rendering ${availableHints} inspiration hint${availableHints === 1 ? '' : 's'}...`,
+    );
+
+    const hints = chooseInspirationHints(availableHints);
+
+    if (hints.length > 0) {
+      // Decide the result first; the route animation is only a visual render.
+      setFoundWords((current) => {
+        const next = { ...current };
+        for (const hint of hints) next[hint.word] = hint;
+        return next;
+      });
+
+      setSwiped((current) => {
+        const next = { ...current };
+        for (const hint of hints) next[hint.word] = true;
+        return next;
+      });
+
+      setHintsUsed((current) => current + hints.length);
+      await renderInspirationHints(hints);
+
+      const lastHint = hints[hints.length - 1];
+      setSelectedRouteInfo(
+        `${lastHint.word} · swipe ${formatRoute(lastHint.path)}${
+          lastHint.score ? ` · ${lastHint.score} pts` : ''
+        }`,
+      );
+    }
+
+    setFinished(true);
+    setRoundPhase('finished');
+    setMask(false);
+    setOpenWordList(true);
+    setStatusMessage('Round finished.');
+    setIsInspirationClosing(false);
+  }, [availableHints, board, chooseInspirationHints, finished, isInspirationClosing, renderInspirationHints]);
+
+  useEffect(() => {
+    if (!hasTimer || finished || !board || roundPhase !== 'playing') return;
+
+    if (timeLeft <= 0) {
+      if (activeMode === 'inspiration' && availableHints > 0) {
+        void finishInspirationRound();
+        return;
+      }
+
+      setFinished(true);
+      setRoundPhase('finished');
+      setStatusMessage('Round finished.');
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setTimeLeft((current) => Math.max(0, current - 0.1));
+    }, 100);
+
+    return () => window.clearInterval(timer);
+  }, [activeMode, availableHints, board, finished, finishInspirationRound, hasTimer, roundPhase, timeLeft]);
+
   const useInspirationHint = useCallback(async () => {
-    if (!board || availableHints <= 0 || isInspirationAnimating) return;
-    const candidates = flatWords.filter((word) => word.length >= 5 && !foundWords[word]);
-    if (candidates.length === 0) {
+    if (!board || availableHints <= 0 || isInspirationAnimating || isInspirationClosing) return;
+
+    const [hint] = chooseInspirationHints(1);
+    if (!hint) {
       setHintsUsed((current) => current + 1);
       setStatusMessage('No remaining 5+ word is available for inspiration.');
       return;
     }
 
-    const word = candidates[Math.floor(Math.random() * candidates.length)];
-    const bestRoute = bestRouteForWord(board.size, board.letters, word, bonuses, {
-      lengthBonus5Plus,
-      practice: isPractice,
-    });
-
-    if (!bestRoute) return;
-    addFoundWord({ word, path: bestRoute.path, score: bestRoute.score, inspired: true });
-    setIsInspirationAnimating(true);
-
-    for (let length = 1; length <= bestRoute.path.length; length += 1) {
-      setHighlightedRoute(bestRoute.path.slice(0, length));
-      await wait(ROUTE_ANIMATION_STEP_MS);
-    }
-
-    await wait(ROUTE_ANIMATION_STEP_MS);
-    setHighlightedRoute([]);
-    setIsInspirationAnimating(false);
-    setSelectedRouteInfo(
-      `${word} · swipe ${formatRoute(bestRoute.path)}${bestRoute.score ? ` · ${bestRoute.score} pts` : ''}`,
-    );
+    addFoundWord(hint);
     setHintsUsed((current) => current + 1);
-    setStatusMessage(`Inspiration found ${word}${bestRoute.score ? ` for ${bestRoute.score} points` : ''}.`);
+    await renderInspirationHints([hint]);
+
+    setSelectedRouteInfo(
+      `${hint.word} · swipe ${formatRoute(hint.path)}${hint.score ? ` · ${hint.score} pts` : ''}`,
+    );
+    setStatusMessage(`Inspiration found ${hint.word}${hint.score ? ` for ${hint.score} points` : ''}.`);
   }, [
     addFoundWord,
     availableHints,
     board,
-    bonuses,
-    flatWords,
-    foundWords,
+    chooseInspirationHints,
     isInspirationAnimating,
-    isPractice,
-    lengthBonus5Plus,
+    isInspirationClosing,
+    renderInspirationHints,
   ]);
-
-  useEffect(() => {
-    if (
-      hasTimer &&
-      timeLeft <= 0 &&
-      activeMode === 'inspiration' &&
-      availableHints === 0 &&
-      board &&
-      !finished
-    ) {
-      setFinished(true);
-      setRoundPhase('finished');
-      setStatusMessage('Round finished.');
-    }
-  }, [activeMode, availableHints, board, finished, hasTimer, roundPhase, timeLeft]);
 
   useEffect(() => {
     if (roundPhase !== 'finished' || !board) return;
@@ -1182,7 +1242,12 @@ export default function RandomBoardClient() {
                     }`}
                     onClick={useInspirationHint}
                     disabled={
-                      availableHints <= 0 || finished || roundPhase !== 'playing' || isInspirationAnimating
+                      availableHints <= 0 ||
+                      finished ||
+                      roundPhase !== 'playing' ||
+                      isInspirationAnimating ||
+                      isInspirationClosing ||
+                      (hasTimer && timeLeft <= 0)
                     }
                   >
                     Use inspiration × {availableHints}

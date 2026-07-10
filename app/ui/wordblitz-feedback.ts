@@ -1,7 +1,6 @@
 type VibrationPattern = number | number[];
 
-const TILE_SWIPE_PATTERN: VibrationPattern = [45, 18, 45];
-const NEW_WORD_PATTERN: VibrationPattern = [90, 30, 90, 30, 120];
+const NEW_WORD_PATTERN: VibrationPattern = [120, 35, 120, 35, 160];
 
 function vibrate(pattern: VibrationPattern): void {
   if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
@@ -14,7 +13,7 @@ function vibrate(pattern: VibrationPattern): void {
 }
 
 export function vibrateForTileSwipe(): void {
-  vibrate(TILE_SWIPE_PATTERN);
+  // Do not vibrate while merely passing over tiles.
 }
 
 export function vibrateForNewWord(): void {
