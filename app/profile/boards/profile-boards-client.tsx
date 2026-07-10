@@ -34,6 +34,7 @@ type ProfileBoardRow = {
   found_words?: string | null;
   completed: boolean;
   timed: boolean;
+  personal_best_eligible?: boolean;
   date: string;
   updated_at: string;
 };
@@ -164,6 +165,9 @@ export default function ProfileBoardsClient() {
                     <td className="px-3 py-3">
                       {board.source_mode}
                       {board.round_mode ? <div className="text-xs opacity-60">{board.round_mode}</div> : null}
+                      {board.personal_best_eligible ? (
+                        <div className="mt-1 text-xs font-bold text-emerald-600 dark:text-emerald-300">PB eligible</div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3">
                       {board.found_count}/{board.countable_words || board.total_words || 0}

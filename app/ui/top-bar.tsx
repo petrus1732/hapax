@@ -28,17 +28,32 @@ export async function TopBar() {
         <ThemeSwitch></ThemeSwitch>
       </div>
 
-      <div className="flex">
-        <div className="flex items-center mr-3">{session?.user ? session?.user?.name : ''}</div>
-        <form
-          action={async () => {
-            'use server';
-            if (!session?.user) redirect('/login');
-            else await signOut();
-          }}
-        >
-          <Button>{!session?.user ? 'login' : 'sign out'}</Button>
-        </form>
+      <div className="flex items-center gap-2">
+        <div className="mr-1 flex items-center">{session?.user ? session?.user?.name : ''}</div>
+        {!session?.user ? (
+          <>
+            <Link href="/register" className="hidden rounded-lg px-3 py-2 text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 sm:block">
+              register
+            </Link>
+            <form
+              action={async () => {
+                'use server';
+                redirect('/login');
+              }}
+            >
+              <Button>login</Button>
+            </form>
+          </>
+        ) : (
+          <form
+            action={async () => {
+              'use server';
+              await signOut();
+            }}
+          >
+            <Button>sign out</Button>
+          </form>
+        )}
       </div>
     </div>
   );

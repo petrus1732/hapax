@@ -33,6 +33,18 @@ export const BLITZ_SECONDS = 30;
 export const MIN_PLAYABLE_WORDS = 90;
 export const MAX_BOARD_ROLL_ATTEMPTS = 120;
 export const WORD_RICH_FALLBACK_BOARD = 'MARMNEAYOSLAAZXE';
+export const VERY_RICH_FALLBACK_BOARDS = [
+  'DTRDEAOIRSCNOEUS',
+  'FDMREAEBSCRSEEIO',
+  'TIEUBRCVAESALTNL',
+  'YSRCOETADEGAMARN',
+  'NTCSSIEONCLPNATS',
+  'MLAASPETUIRSGCEV',
+  'TLDISOMEIESARTSI',
+  'NIDSSAEOTESNACIB',
+  'GERCRSTATASSERNE',
+  'ISADANISUEATMPRT',
+] as const;
 export const TRAINING_LETTERS = ['Q', 'X', 'Z', 'J'] as const;
 
 export const INSPIRATION_CHARGE_THRESHOLD = 5;
@@ -142,6 +154,8 @@ export const LETTER_POINTS: Record<string, number> = {
 
 const VOWELS = 'AEIOUY';
 const CONSONANTS = 'BCDFGHJKLMNPQRSTVWXZ';
+const RICH_LETTER_BAG = 'EEEEAAAIIIOOOUUNNNRRRTTTSSSLLLDDCCMMHHPPGGGBBFFYVWK';
+const VERY_RICH_LETTER_BAG = 'EEEEEEAAAAIIIIOOOOUUUNNNNRRRRSSSSTTTTLLLLDDDCCCMMPPGGBBFYVW';
 
 const LETTERS = Object.keys(LETTER_POINTS);
 const LETTER_WEIGHTS = LETTERS.map((letter) => 1 / LETTER_POINTS[letter]);
@@ -296,7 +310,25 @@ export function groupWordsByLength(words: string[]): string[][] {
   return grouped.map((group) => (group ? [...group].sort() : group));
 }
 
-export function randomBoardLetters(options: { avoidHardLetters?: boolean } = {}): string {
+export function randomBoardLetters(
+  options: { avoidHardLetters?: boolean; richBias?: 'rich' | 'very-rich' } = {},
+): string {
+  const biasedBag =
+    options.richBias === 'very-rich'
+      ? VERY_RICH_LETTER_BAG
+      : options.richBias === 'rich'
+        ? RICH_LETTER_BAG
+        : null;
+
+  if (biasedBag) {
+    const bag = options.avoidHardLetters ? biasedBag.replace(/[QJX]/g, '') : biasedBag;
+    let letters = '';
+    for (let index = 0; index < BOARD_SIZE * BOARD_SIZE; index += 1) {
+      letters += bag[Math.floor(Math.random() * bag.length)];
+    }
+    return letters;
+  }
+
   const consonantPool = options.avoidHardLetters ? CONSONANTS.replace(/[QJX]/g, '') : CONSONANTS;
   let letters = '';
   for (let index = 0; index < BOARD_SIZE * BOARD_SIZE; index += 1) {
@@ -553,8 +585,16 @@ export function filterCountableWordsForMode(words: string[], mode: PracticeMode)
   return words.filter((word) => isWordCountableInMode(word, mode));
 }
 
-export function fallbackBoardForMode(mode: PracticeMode, trainingLetter: TrainingLetter = 'Q'): string {
-  return mode === 'training' ? TRAINING_WORD_RICH_FALLBACK_BOARDS[trainingLetter] : WORD_RICH_FALLBACK_BOARD;
+export function fallbackBoardForMode(
+  mode: PracticeMode,
+  trainingLetter: TrainingLetter = 'Q',
+  abundance?: BoardAbundance,
+): string {
+  if (mode === 'training') return TRAINING_WORD_RICH_FALLBACK_BOARDS[trainingLetter];
+  if (abundance === 'very-rich') {
+    return VERY_RICH_FALLBACK_BOARDS[Math.floor(Math.random() * VERY_RICH_FALLBACK_BOARDS.length)];
+  }
+  return WORD_RICH_FALLBACK_BOARD;
 }
 
 export function formatRoute(path: number[]): string {

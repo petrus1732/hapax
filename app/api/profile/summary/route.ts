@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
       WHERE user_email = ${userKey}
         AND completed = TRUE
         AND timed = TRUE
+        AND personal_best_eligible = TRUE
         AND source_mode NOT IN ('practice', 'training', 'infinite')
         AND (${includeInspiration} OR source_mode <> 'inspiration')
         AND (${includeBlitz} OR source_mode <> 'blitz')
@@ -136,6 +137,7 @@ export async function GET(request: NextRequest) {
       WHERE user_email = ${userKey}
         AND completed = TRUE
         AND timed = TRUE
+        AND personal_best_eligible = TRUE
         AND source_mode NOT IN ('practice', 'training', 'infinite')
         AND (${includeInspiration} OR source_mode <> 'inspiration')
         AND (${includeBlitz} OR source_mode <> 'blitz')
@@ -156,6 +158,7 @@ export async function GET(request: NextRequest) {
       WHERE user_email = ${userKey}
         AND completed = TRUE
         AND timed = TRUE
+        AND personal_best_eligible = TRUE
         AND source_mode NOT IN ('practice', 'training', 'infinite')
         AND (${includeInspiration} OR source_mode <> 'inspiration')
         AND (${includeBlitz} OR source_mode <> 'blitz')

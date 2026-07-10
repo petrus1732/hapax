@@ -186,7 +186,8 @@ export default function RandomBoardClient() {
   const activeMode = mode;
   const effectiveRound: RoundMode =
     activeMode === 'quadruple-bonus' ? 'r4' : isRoundMode(activeMode) ? roundMode : 'practice';
-  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite';
+  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite' && activeMode !== 'training';
+  const personalBestEligible = hasTimer && activeMode !== 'training';
   const roundDuration = activeMode === 'blitz' ? BLITZ_SECONDS : hasTimer ? ROUND_SECONDS : 0;
   const lengthBonus5Plus = activeMode === 'length-bonus-5-plus';
   const isPractice = activeMode === 'practice' || activeMode === 'infinite';
@@ -196,8 +197,10 @@ export default function RandomBoardClient() {
     activeMode === 'arena-gladiator' || activeMode === 'arena-tight-rope' ? dictionaryWords : words;
   const flatWords = useMemo(() => words.flat().filter(Boolean), [words]);
   const allBoardWords = useMemo(() => dictionaryWords.flat().filter(Boolean), [dictionaryWords]);
-  const wordListGroups = finished ? dictionaryWords : words;
-  const wordListTotal = finished ? allBoardWords.length : flatWords.length;
+  const showFullWordList = finished || !hasTimer;
+  const wordListTitle = showFullWordList ? 'All board words' : 'Word list';
+  const wordListGroups = showFullWordList ? dictionaryWords : words;
+  const wordListTotal = showFullWordList ? allBoardWords.length : flatWords.length;
   const currentAbundance = classifyBoardAbundance(allBoardWords.length);
   const foundWordList = useMemo(() => Object.values(foundWords), [foundWords]);
   const inspirationCharge = calculateInspirationChargeState(manualAcceptedCount, hintsUsed);
@@ -337,10 +340,11 @@ export default function RandomBoardClient() {
     };
 
     const avoidHardLetters = boardAbundance === 'rich' || boardAbundance === 'very-rich';
+    const richBias = boardAbundance === 'very-rich' ? 'very-rich' : boardAbundance === 'rich' ? 'rich' : undefined;
     const generateCandidateLetters = (): Candidate =>
       activeMode === 'training'
         ? generateTrainingBoardCandidate(wordlist, trainingLetter)
-        : { letters: randomBoardLetters({ avoidHardLetters }), seedWord: null };
+        : { letters: randomBoardLetters({ avoidHardLetters, richBias }), seedWord: null };
 
     const scoreCandidate = (candidate: Candidate) => {
       const [rawFound, allTilesCovered] = findWords(BOARD_SIZE, candidate.letters, trie, {
@@ -397,7 +401,14 @@ export default function RandomBoardClient() {
     let bestResult = scoreCandidate(generateCandidateLetters());
     let attemptsUsed = 1;
 
-    for (let attempt = 0; attempt < MAX_BOARD_ROLL_ATTEMPTS; attempt += 1) {
+    const maxRollAttempts =
+      boardAbundance === 'very-rich'
+        ? MAX_BOARD_ROLL_ATTEMPTS * 5
+        : boardAbundance === 'rich'
+          ? MAX_BOARD_ROLL_ATTEMPTS * 2
+          : MAX_BOARD_ROLL_ATTEMPTS;
+
+    for (let attempt = 0; attempt < maxRollAttempts; attempt += 1) {
       if (isAcceptableCandidate(bestResult)) break;
 
       attemptsUsed += 1;
@@ -415,7 +426,7 @@ export default function RandomBoardClient() {
     }
 
     if (!isAcceptableCandidate(bestResult)) {
-      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter);
+      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter, boardAbundance);
       const fallbackResult = scoreCandidate({ letters: fallbackLetters, seedWord: null });
       if (isBetterCandidate(fallbackResult, bestResult)) bestResult = fallbackResult;
     }
@@ -494,6 +505,7 @@ export default function RandomBoardClient() {
             foundCount: 0,
             score: 0,
             completed: false,
+            personalBestEligible,
           },
         }),
       })
@@ -513,6 +525,7 @@ export default function RandomBoardClient() {
     isEvolution,
     isPractice,
     isRollingBoard,
+    personalBestEligible,
     resetRoundState,
     roundDuration,
     session?.user,
@@ -760,6 +773,7 @@ export default function RandomBoardClient() {
             foundCount: foundWordPayload.length,
             score: totalScore,
             completed,
+            personalBestEligible,
           },
         }),
       }).catch(() => undefined);
@@ -774,6 +788,7 @@ export default function RandomBoardClient() {
       effectiveRound,
       flatWords.length,
       foundWordList,
+      personalBestEligible,
       playRecordId,
       session?.user,
       totalScore,
@@ -941,8 +956,7 @@ export default function RandomBoardClient() {
               ))}
             </div>
             <p className="mt-2 text-xs text-indigo-700/80 dark:text-indigo-200/80">
-              Rich and Very Rich boards use a looser full-tile-coverage rule and avoid Q/J/X on non-training
-              rerolls.
+              Rich and Very Rich boards use common-letter rerolls, a looser full-tile-coverage rule, and avoid Q/J/X on non-training rerolls.
             </p>
           </div>
 
@@ -1240,7 +1254,7 @@ export default function RandomBoardClient() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-4 pt-10">
           <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl dark:bg-zinc-950">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">{finished ? 'All board words' : 'Word list'}</h2>
+              <h2 className="text-xl font-black">{wordListTitle}</h2>
               <button
                 className="rounded-full bg-gray-100 px-3 py-1 font-bold hover:bg-gray-200 dark:bg-zinc-800"
                 onClick={() => setOpenWordList(false)}
@@ -1248,10 +1262,12 @@ export default function RandomBoardClient() {
                 Close
               </button>
             </div>
-            {finished ? (
+            {showFullWordList ? (
               <div className="mb-3 rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
-                Time is up. All {allBoardWords.length} board words are revealed; click any word to see its
-                highest-scoring route.
+                {finished
+                  ? `Time is up. All ${allBoardWords.length} board words are revealed.`
+                  : `Untimed mode: all ${allBoardWords.length} board words are available from the Words button.`}{' '}
+                Click any word to see its highest-scoring route.
               </div>
             ) : (
               <label className="mb-3 flex items-center gap-2 text-sm">
@@ -1274,7 +1290,7 @@ export default function RandomBoardClient() {
                             className={`rounded-lg px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-800 ${found ? 'font-bold text-green-600' : 'text-gray-500'}`}
                             onClick={() => showWordRouteFromModal(word)}
                           >
-                            {finished || found || !mask ? word : '*'.repeat(word.length)}
+                            {showFullWordList || found || !mask ? word : '*'.repeat(word.length)}
                             {found?.score ? (
                               <span className="ml-1 text-xs opacity-70">{found.score}</span>
                             ) : null}

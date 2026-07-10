@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
           found_words = ${fields.foundWordsSerialized},
           completed = ${fields.completed ?? false},
           timed = ${fields.timed},
+          personal_best_eligible = ${fields.personalBestEligible},
           updated_at = ${now}
         WHERE id = ${payload.id} AND user_email = ${userKey}
       `;
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
           found_words,
           completed,
           timed,
+          personal_best_eligible,
           date,
           updated_at
         )
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
           ${fields.foundWordsSerialized},
           ${fields.completed ?? false},
           ${fields.timed},
+          ${fields.personalBestEligible},
           ${date},
           ${now}
         )
@@ -107,6 +110,7 @@ export async function POST(request: NextRequest) {
           found_words = EXCLUDED.found_words,
           completed = EXCLUDED.completed,
           timed = EXCLUDED.timed,
+          personal_best_eligible = EXCLUDED.personal_best_eligible,
           updated_at = EXCLUDED.updated_at
       `;
     }

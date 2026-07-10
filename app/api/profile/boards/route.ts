@@ -31,6 +31,7 @@ export async function GET() {
         found_words,
         completed,
         timed,
+        personal_best_eligible,
         date,
         updated_at
       FROM user_board_plays

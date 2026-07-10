@@ -47,6 +47,7 @@ export type RoundRecordPayload = {
   foundCount?: number;
   score?: number;
   completed?: boolean;
+  personalBestEligible?: boolean;
   theme?: string | null;
   subtheme?: string | null;
 };
@@ -121,6 +122,7 @@ export function validateRoundRecordPayload(payload: unknown): RoundRecordPayload
     foundCount,
     score,
     completed: Boolean(record.completed),
+    personalBestEligible: Boolean(record.personalBestEligible),
     theme: typeof record.theme === 'string' ? record.theme.slice(0, 60) : null,
     subtheme: typeof record.subtheme === 'string' ? record.subtheme.slice(0, 60) : null,
   };
@@ -128,6 +130,11 @@ export function validateRoundRecordPayload(payload: unknown): RoundRecordPayload
 
 export function isTimedPersonalBestMode(sourceMode: string) {
   return !['practice', 'infinite', 'training'].includes(sourceMode);
+}
+
+export function isPersonalBestEligibleRandomRoll(payload: RoundRecordPayload) {
+  const sourceMode = String(payload.sourceMode ?? 'practice');
+  return Boolean(payload.personalBestEligible) && isTimedPersonalBestMode(sourceMode);
 }
 
 export async function ensureProfileTables() {
@@ -154,12 +161,14 @@ export async function ensureProfileTables() {
       found_words TEXT,
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       timed BOOLEAN NOT NULL DEFAULT FALSE,
+      personal_best_eligible BOOLEAN NOT NULL DEFAULT FALSE,
       date TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS user_board_plays_user_email_idx ON user_board_plays (user_email)`;
   await sql`CREATE INDEX IF NOT EXISTS user_board_plays_user_updated_idx ON user_board_plays (user_email, updated_at DESC)`;
+  await sql`ALTER TABLE user_board_plays ADD COLUMN IF NOT EXISTS personal_best_eligible BOOLEAN NOT NULL DEFAULT FALSE`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS user_word_records (
@@ -233,5 +242,6 @@ export function roundRecordToSqlFields(payload: RoundRecordPayload) {
     bonusesSerialized: serializeBonuses(payload.bonuses),
     foundWordsSerialized: JSON.stringify(foundWords),
     timed: isTimedPersonalBestMode(sourceMode),
+    personalBestEligible: isPersonalBestEligibleRandomRoll(payload),
   };
 }
