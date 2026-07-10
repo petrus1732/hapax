@@ -6,8 +6,8 @@ interface TileProps {
   letter: string;
   fontSize: number;
   radiusEm?: number;
-  onStart: (index: number) => void;
-  onMove: (index: number) => void;
+  onStart: (index: number, centerDistanceRatio?: number) => void;
+  onMove: (index: number, centerDistanceRatio?: number) => void;
   isActive: boolean;
   isRouteHighlighted?: boolean;
   isRouteFlashing?: boolean;
@@ -37,6 +37,16 @@ function bonusFrameClass(bonus?: BonusOrNull): string {
   }
 }
 
+export function tileCenterDistanceRatio(element: HTMLElement, clientX: number, clientY: number): number {
+  const rect = element.getBoundingClientRect();
+  const shorterSide = Math.min(rect.width, rect.height);
+  if (shorterSide <= 0) return 0;
+
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  return Math.hypot(clientX - centerX, clientY - centerY) / shorterSide;
+}
+
 export default function Tile({
   id,
   letter,
@@ -57,30 +67,41 @@ export default function Tile({
 
   useEffect(() => {
     const tileElement = tileRef.current;
+    if (!tileElement) return;
 
     const handleTouchStart = (event: TouchEvent) => {
       if (disabled) return;
       event.preventDefault();
-      onStart(id);
+
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      onStart(id, tileCenterDistanceRatio(tileElement, touch.clientX, touch.clientY));
     };
 
     const handleTouchMove = (event: TouchEvent) => {
       if (disabled) return;
       event.preventDefault();
+
       const touch = event.touches[0];
+      if (!touch) return;
+
       const target = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (target && target instanceof HTMLElement && target.dataset.tileId) {
-        const targetId = parseInt(target.dataset.tileId, 10);
-        onMove(targetId);
-      }
+      const targetTile =
+        target instanceof HTMLElement ? (target.closest('[data-tile-id]') as HTMLElement | null) : null;
+      const targetId = Number.parseInt(targetTile?.dataset.tileId ?? '', 10);
+
+      if (!targetTile || !Number.isInteger(targetId)) return;
+
+      onMove(targetId, tileCenterDistanceRatio(targetTile, touch.clientX, touch.clientY));
     };
 
-    tileElement?.addEventListener('touchstart', handleTouchStart, { passive: false });
-    tileElement?.addEventListener('touchmove', handleTouchMove, { passive: false });
+    tileElement.addEventListener('touchstart', handleTouchStart, { passive: false });
+    tileElement.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     return () => {
-      tileElement?.removeEventListener('touchstart', handleTouchStart);
-      tileElement?.removeEventListener('touchmove', handleTouchMove);
+      tileElement.removeEventListener('touchstart', handleTouchStart);
+      tileElement.removeEventListener('touchmove', handleTouchMove);
     };
   }, [disabled, id, onStart, onMove]);
 
@@ -102,8 +123,8 @@ export default function Tile({
       data-tile-id={id}
       style={{ fontSize: `${fontSize}px`, borderRadius: `${radiusEm}em` }}
       className={className}
-      onMouseDown={() => !disabled && onStart(id)}
-      onMouseEnter={() => !disabled && onMove(id)}
+      onMouseDown={() => !disabled && onStart(id, 0)}
+      onMouseEnter={() => !disabled && onMove(id, 0)}
     >
       {bonus && <span className={`wb-bonus-dot wb-bonus-${bonus}`}>{bonusLabel(bonus)}</span>}
       {showPoints && <span className="wb-tile-points">{points}</span>}

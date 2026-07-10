@@ -73,6 +73,7 @@ body {
 }
 
 .wb-bonus-dot {
+  pointer-events: none;
   position: absolute;
   left: -0.65rem;
   top: -0.65rem;
@@ -116,6 +117,7 @@ body {
 }
 
 .wb-tile-points {
+  pointer-events: none;
   position: absolute;
   right: 0.35rem;
   top: 0.2rem;
@@ -126,6 +128,7 @@ body {
 }
 
 .wb-evolution-level {
+  pointer-events: none;
   position: absolute;
   bottom: 0.25rem;
   right: 0.35rem;

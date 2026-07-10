@@ -6,6 +6,9 @@ import { BonusOrNull, isAdjacent, letterPoints } from '@/app/lib/wordblitz';
 import { getWordBlitzBoardMetrics } from './wordblitz-layout';
 import { vibrateForTileSwipe } from './wordblitz-feedback';
 
+export const TILE_SELECTION_RADIUS_RATIO = 0.44;
+export const TILE_BACKTRACK_RADIUS_RATIO = TILE_SELECTION_RADIUS_RATIO * 0.6;
+
 export type SubmittedTerm = {
   word: string;
   path: number[];
@@ -108,8 +111,8 @@ export default function SquareBoard({
   }, [clearActiveTiles]);
 
   const handleStart = useCallback(
-    (index: number) => {
-      if (disabled) return;
+    (index: number, centerDistanceRatio = 0) => {
+      if (disabled || centerDistanceRatio > TILE_SELECTION_RADIUS_RATIO) return;
       isRecordingRef.current = true;
       setIsRecording(true);
       const newPath = [index];
@@ -123,17 +126,22 @@ export default function SquareBoard({
   );
 
   const handleMove = useCallback(
-    (index: number) => {
+    (index: number, centerDistanceRatio = 0) => {
       if (!isRecordingRef.current || disabled) return;
 
       const currentPath = pathRef.current;
       const lastId = currentPath.at(-1);
       let nextPath = currentPath;
+      const isBacktracking = currentPath.length >= 2 && currentPath.at(-2) === index;
 
-      if (currentPath.length >= 2 && currentPath.at(-2) === index) {
+      if (isBacktracking) {
+        // Backtracking has a smaller activation radius, so grazing the prior tile does not undo a letter.
+        if (centerDistanceRatio > TILE_BACKTRACK_RADIUS_RATIO) return;
         nextPath = currentPath.slice(0, -1);
       } else if (lastId !== undefined && isAdjacent(lastId, index, size)) {
         if (currentPath.includes(index)) return;
+        // Require the finger to enter the central circular hit area instead of accepting the full square tile.
+        if (centerDistanceRatio > TILE_SELECTION_RADIUS_RATIO) return;
         nextPath = [...currentPath, index];
       }
 

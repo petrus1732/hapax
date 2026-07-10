@@ -7,6 +7,12 @@ import { useClientSession } from '@/app/lib/use-client-session';
 import { findWords } from '@/app/lib/find-words';
 import { Trie } from '@/app/lib/trie';
 import {
+  WordListFilter,
+  arenaMetricForWord,
+  filterWordGroupsByStatus,
+  registerFirstSwipe,
+} from '@/app/lib/random-board-ui';
+import {
   BLITZ_SECONDS,
   BOARD_ABUNDANCE_SPECS,
   BOARD_SIZE,
@@ -160,6 +166,7 @@ export default function RandomBoardClient() {
   const [dictionaryWords, setDictionaryWords] = useState<string[][]>([]);
   const [words, setWords] = useState<string[][]>([]);
   const [swiped, setSwiped] = useState<Record<string, boolean>>({});
+  const [slidWords, setSlidWords] = useState<Record<string, boolean>>({});
   const [foundWords, setFoundWords] = useState<Record<string, FoundWord>>({});
   const [manualAcceptedCount, setManualAcceptedCount] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
@@ -173,6 +180,7 @@ export default function RandomBoardClient() {
   const [isRollingBoard, setIsRollingBoard] = useState(false);
   const [openWordList, setOpenWordList] = useState(false);
   const [mask, setMask] = useState(true);
+  const [wordListFilter, setWordListFilter] = useState<WordListFilter>('all');
   const [statusMessage, setStatusMessage] = useState('Choose a mode, then start a board.');
   const [highlightedRoute, setHighlightedRoute] = useState<number[]>([]);
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
@@ -180,6 +188,7 @@ export default function RandomBoardClient() {
   const [isInspirationClosing, setIsInspirationClosing] = useState(false);
   const inspirationReservedWordsRef = useRef<Set<string>>(new Set());
   const inspirationAnimationCountRef = useRef(0);
+  const slidWordsRef = useRef<Set<string>>(new Set());
   const [trainingSeedWord, setTrainingSeedWord] = useState<string | null>(null);
   const [persistenceMessage, setPersistenceMessage] = useState<string>('');
   const [playRecordId, setPlayRecordId] = useState<string | null>(null);
@@ -204,6 +213,19 @@ export default function RandomBoardClient() {
   const wordListTitle = showFullWordList ? 'All board words' : 'Word list';
   const wordListGroups = showFullWordList ? dictionaryWords : words;
   const wordListTotal = showFullWordList ? allBoardWords.length : flatWords.length;
+  const filteredWordListGroups = useMemo(
+    () => filterWordGroupsByStatus(wordListGroups, slidWords, wordListFilter),
+    [slidWords, wordListFilter, wordListGroups],
+  );
+  const filteredWordListCount = useMemo(
+    () => filteredWordListGroups.reduce((total, group) => total + group.length, 0),
+    [filteredWordListGroups],
+  );
+  const wordListSwipedCount = useMemo(
+    () => wordListGroups.reduce((total, group) => total + group.filter((word) => slidWords[word]).length, 0),
+    [slidWords, wordListGroups],
+  );
+  const wordListUnswipedCount = wordListTotal - wordListSwipedCount;
   const currentAbundance = classifyBoardAbundance(allBoardWords.length);
   const foundWordList = useMemo(() => Object.values(foundWords), [foundWords]);
   const inspirationCharge = calculateInspirationChargeState(manualAcceptedCount, hintsUsed);
@@ -282,6 +304,7 @@ export default function RandomBoardClient() {
 
   const resetRoundState = useCallback(() => {
     setSwiped({});
+    setSlidWords({});
     setFoundWords({});
     setManualAcceptedCount(0);
     setHintsUsed(0);
@@ -291,6 +314,7 @@ export default function RandomBoardClient() {
     setFinished(false);
     setOpenWordList(false);
     setMask(true);
+    setWordListFilter('all');
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
     setTrainingSeedWord(null);
@@ -300,6 +324,7 @@ export default function RandomBoardClient() {
     setIsInspirationClosing(false);
     inspirationReservedWordsRef.current.clear();
     inspirationAnimationCountRef.current = 0;
+    slidWordsRef.current.clear();
     setIsInspirationAnimating(false);
   }, []);
 
@@ -543,6 +568,10 @@ export default function RandomBoardClient() {
       if (roundPhase !== 'playing' || finished) return { accepted: false, color: 'gray' };
       if (hasTimer && timeLeft <= 0) return { accepted: false, color: 'gray' };
       if (!isDictionaryWord) return { accepted: false, color: 'red' };
+
+      const isFirstSwipe = registerFirstSwipe(slidWordsRef.current, word);
+      if (isFirstSwipe) setSlidWords((current) => ({ ...current, [word]: true }));
+
       if (isAlreadyFound) {
         recordManualWord({ word, path, score: 0 });
         setStatusMessage(`${word} was already found.`);
@@ -554,18 +583,22 @@ export default function RandomBoardClient() {
         return { accepted: false, color: 'inherit' };
       }
 
-      if (activeMode === 'arena-gladiator' && word.length <= 4) {
-        recordManualWord({ word, path, score: 0 });
-        setPenalties((current) => current + 1);
-        setStatusMessage(`${word} is too short for gladiator mode. Penalty +1.`);
-        return { accepted: false, color: 'red' };
-      }
+      const arenaMetric = arenaMetricForWord(activeMode, word.length);
 
-      if (activeMode === 'arena-tight-rope' && word.length !== 4) {
+      if (arenaMetric === 'penalty') {
         recordManualWord({ word, path, score: 0 });
-        setPenalties((current) => current + 1);
-        setStatusMessage(`${word} is not length 4. Penalty +1.`);
-        return { accepted: false, color: 'red' };
+        if (isFirstSwipe) {
+          setPenalties((current) => current + 1);
+          setStatusMessage(
+            activeMode === 'arena-gladiator'
+              ? `${word} is too short for gladiator mode. Penalty +1.`
+              : `${word} is not length 4. Penalty +1.`,
+          );
+        } else {
+          setStatusMessage(`${word} already received its penalty.`);
+        }
+
+        return { accepted: false, color: isFirstSwipe ? 'red' : 'yellow' };
       }
 
       const score = calculatePathScore(board?.letters ?? '', path, bonuses, {
@@ -582,7 +615,7 @@ export default function RandomBoardClient() {
       if (activeMode === 'blitz') {
         setTimeLeft((current) => current + 1);
         setStatusMessage(`${word} accepted. +1 second.`);
-      } else if (activeMode === 'arena-8-plus-superior' && word.length >= 8) {
+      } else if (arenaMetric === 'kudo' && isFirstSwipe) {
         setKudos((current) => current + 1);
         setStatusMessage(`${word} accepted. Kudo +1.`);
       } else {
@@ -1165,6 +1198,16 @@ export default function RandomBoardClient() {
                     Score {totalScore}
                   </span>
                 )}
+                {(activeMode === 'arena-gladiator' || activeMode === 'arena-tight-rope') && (
+                  <span className="rounded-full bg-red-100 px-3 py-1 font-bold text-red-700 dark:bg-red-950 dark:text-red-200">
+                    Penalty {penalties}
+                  </span>
+                )}
+                {activeMode === 'arena-8-plus-superior' && (
+                  <span className="rounded-full bg-amber-100 px-3 py-1 font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    Kudos {kudos}
+                  </span>
+                )}
                 <button
                   className="rounded-full bg-gray-100 px-3 py-1 font-bold text-gray-950 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
                   onClick={() => setOpenWordList(true)}
@@ -1283,8 +1326,10 @@ export default function RandomBoardClient() {
               <Stat label="Score" value={isPractice ? 'off' : totalScore.toString()} />
               <Stat label="Base" value={isPractice ? 'off' : baseScore.toString()} />
               <Stat label="Evolution" value={isEvolution ? evolutionBonusScore.toString() : '—'} />
-              <Stat label="Penalties" value={penalties.toString()} />
-              <Stat label="Kudos" value={kudos.toString()} />
+              {(activeMode === 'arena-gladiator' || activeMode === 'arena-tight-rope') && (
+                <Stat label="Penalty" value={penalties.toString()} />
+              )}
+              {activeMode === 'arena-8-plus-superior' && <Stat label="Kudos" value={kudos.toString()} />}
               <Stat label="Manual" value={manualAcceptedCount.toString()} />
               <Stat label="Hints used" value={hintsUsed.toString()} />
             </div>
@@ -1345,6 +1390,28 @@ export default function RandomBoardClient() {
                 Close
               </button>
             </div>
+            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Word list filter">
+              {(
+                [
+                  ['all', `All words (${wordListTotal})`],
+                  ['found', `Swiped (${wordListSwipedCount})`],
+                  ['missed', `Not swiped (${wordListUnswipedCount})`],
+                ] as const
+              ).map(([filter, label]) => (
+                <button
+                  key={filter}
+                  type="button"
+                  className={`rounded-full border px-3 py-1.5 text-sm font-bold transition ${
+                    wordListFilter === filter
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200'
+                  }`}
+                  onClick={() => setWordListFilter(filter)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {showFullWordList ? (
               <div className="mb-3 rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
                 {finished
@@ -1359,8 +1426,13 @@ export default function RandomBoardClient() {
               </label>
             )}
             <div className="max-h-[70vh] overflow-auto pr-1">
-              {wordListGroups.map((group, length) => {
-                if (!group || length === 0) return null;
+              {filteredWordListCount === 0 && (
+                <div className="rounded-xl bg-gray-50 p-4 text-center text-sm font-semibold text-gray-500 dark:bg-zinc-900">
+                  No words in this category.
+                </div>
+              )}
+              {filteredWordListGroups.map((group, length) => {
+                if (!group || group.length === 0 || length === 0) return null;
                 return (
                   <div key={length} className="mb-4">
                     <h3 className="mb-2 text-lg font-black text-orange-500">{length} letters</h3>

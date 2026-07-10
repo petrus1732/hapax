@@ -207,4 +207,101 @@ describe('SquareBoard', () => {
     expect(setSwiped).toHaveBeenCalledTimes(1);
     expect(screen.getByText('AB')).not.toHaveStyle({ color: 'rgb(0, 128, 0)' });
   });
+
+  it('ignores touch movement that only grazes the outer edge of a neighboring tile', () => {
+    const { props, tile } = renderBoard();
+    const first = tile(0);
+    const second = tile(1);
+    vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 0,
+      left: 100,
+      top: 0,
+      right: 200,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn((x: number) => (x >= 100 ? second : first)),
+    });
+
+    try {
+      fireEvent.touchStart(first, { touches: [{ clientX: 50, clientY: 50 }] });
+      fireEvent.touchMove(first, { touches: [{ clientX: 199, clientY: 50 }] });
+      fireEvent.touchEnd(window);
+      expect(props.onSubmitTerm).not.toHaveBeenCalled();
+
+      fireEvent.touchStart(first, { touches: [{ clientX: 50, clientY: 50 }] });
+      fireEvent.touchMove(first, { touches: [{ clientX: 150, clientY: 50 }] });
+      fireEvent.touchEnd(window);
+      expect(props.onSubmitTerm).toHaveBeenCalledWith(expect.objectContaining({ word: 'AB', path: [0, 1] }));
+    } finally {
+      Object.defineProperty(document, 'elementFromPoint', {
+        configurable: true,
+        value: originalElementFromPoint,
+      });
+    }
+  });
+
+  it('requires a smaller central hit area before touch backtracking', () => {
+    const { props, tile } = renderBoard();
+    const first = tile(0);
+    const second = tile(1);
+    vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 0,
+      left: 100,
+      top: 0,
+      right: 200,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn((x: number) => (x >= 100 ? second : first)),
+    });
+
+    try {
+      fireEvent.touchStart(first, { touches: [{ clientX: 50, clientY: 50 }] });
+      fireEvent.touchMove(first, { touches: [{ clientX: 150, clientY: 50 }] });
+      fireEvent.touchMove(first, { touches: [{ clientX: 99, clientY: 50 }] });
+      fireEvent.touchEnd(window);
+
+      expect(props.onSubmitTerm).toHaveBeenCalledWith(expect.objectContaining({ word: 'AB', path: [0, 1] }));
+    } finally {
+      Object.defineProperty(document, 'elementFromPoint', {
+        configurable: true,
+        value: originalElementFromPoint,
+      });
+    }
+  });
 });
