@@ -1,3 +1,5 @@
+import type { BonusOrNull } from './wordblitz';
+
 export type User = {
   id: string;
   name: string;
@@ -14,7 +16,7 @@ export type Board = {
   date: string;
   theme?: string;
   subtheme?: string;
-  bonuses?: string | null;
+  bonuses?: BonusOrNull[] | string | null;
   sourceMode?: string | null;
   source_mode?: string | null;
   abundance?: string | null;

@@ -44,7 +44,18 @@ import {
   randomBoardLetters,
   wordCountMatchesAbundance,
 } from '@/app/lib/wordblitz';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CanonicalBoard,
+  TrainingBoardSource,
+  TrainingPace,
+  animateRoutePreview,
+  boardMatchesTrainingSelection,
+  canInspectSwipeResult,
+  normalizeStoredBoard,
+  trainingHasTimer,
+} from '@/app/lib/training-mode';
 
 type ArenaSubmode = 'arena-gladiator' | 'arena-tight-rope' | 'arena-8-plus-superior';
 type RoundPhase = 'idle' | 'countdown' | 'playing' | 'finished';
@@ -59,11 +70,10 @@ type FoundWord = {
 };
 
 const MAIN_MODES: Array<{ id: PracticeMode | 'custom-arena'; label: string; description: string }> = [
-  { id: 'practice', label: 'practice', description: 'No score and no multipliers.' },
   {
-    id: 'infinite',
-    label: 'infinite',
-    description: 'No score, no timer; just find as many words as you want.',
+    id: 'training',
+    label: 'training',
+    description: 'Timed or untimed Q/X/Z/J practice, using a random or saved board.',
   },
   { id: 'normal', label: 'normal', description: 'R1/R2/R3 Word Blitz-style scoring.' },
   { id: 'inspiration', label: 'inspiration', description: 'Earn one hint per 5 manually found words.' },
@@ -85,7 +95,6 @@ const MAIN_MODES: Array<{ id: PracticeMode | 'custom-arena'; label: string; desc
     label: 'custom arena',
     description: 'FB group rules: gladiator, tight rope, and 8+ superior.',
   },
-  { id: 'training', label: 'training mode', description: 'Rare-letter Q/X/Z/J board practice.' },
 ];
 
 const ROUND_CHOICES: Array<{ id: RoundMode; label: string; description: string }> = [
@@ -122,7 +131,6 @@ function isRoundMode(mode: PracticeMode): boolean {
     'arena-gladiator',
     'arena-tight-rope',
     'arena-8-plus-superior',
-    'training',
   ].includes(mode);
 }
 
@@ -155,10 +163,16 @@ function wait(ms: number): Promise<void> {
 }
 
 export default function RandomBoardClient() {
-  const [mode, setMode] = useState<PracticeMode>('practice');
+  const [mode, setMode] = useState<PracticeMode>('training');
   const [arenaMode, setArenaMode] = useState<ArenaSubmode>('arena-gladiator');
   const [roundMode, setRoundMode] = useState<RoundMode>('r1');
   const [trainingLetter, setTrainingLetter] = useState<TrainingLetter>('Q');
+  const [trainingPace, setTrainingPace] = useState<TrainingPace>('timed');
+  const [trainingBoardSource, setTrainingBoardSource] = useState<TrainingBoardSource>('random');
+  const [savedBoards, setSavedBoards] = useState<CanonicalBoard[]>([]);
+  const [selectedSavedBoardId, setSelectedSavedBoardId] = useState<string>('');
+  const [isLoadingSavedBoards, setIsLoadingSavedBoards] = useState(false);
+  const [savedBoardsError, setSavedBoardsError] = useState('');
   const [boardAbundance, setBoardAbundance] = useState<BoardAbundance>('normal');
   const [board, setBoard] = useState<Board | null>(null);
   const [bonuses, setBonuses] = useState<BonusOrNull[]>(Array(BOARD_SIZE * BOARD_SIZE).fill(null));
@@ -186,6 +200,11 @@ export default function RandomBoardClient() {
   const [statusMessage, setStatusMessage] = useState('Choose a mode, then start a board.');
   const [highlightedRoute, setHighlightedRoute] = useState<number[]>([]);
   const [selectedRouteInfo, setSelectedRouteInfo] = useState<string>('');
+  const [definitionWord, setDefinitionWord] = useState('');
+  const [definition, setDefinition] = useState<string | null>(null);
+  const [isDefinitionLoading, setIsDefinitionLoading] = useState(false);
+  const [isRoutePreviewActive, setIsRoutePreviewActive] = useState(false);
+  const routePreviewLockRef = useRef(false);
   const [isInspirationAnimating, setIsInspirationAnimating] = useState(false);
   const [isInspirationClosing, setIsInspirationClosing] = useState(false);
   const inspirationReservedWordsRef = useRef<Set<string>>(new Set());
@@ -201,11 +220,14 @@ export default function RandomBoardClient() {
   const activeMode = mode;
   const effectiveRound: RoundMode =
     activeMode === 'quadruple-bonus' ? 'r4' : isRoundMode(activeMode) ? roundMode : 'practice';
-  const hasTimer = activeMode !== 'practice' && activeMode !== 'infinite';
-  const personalBestEligible = hasTimer;
+  const hasTimer =
+    activeMode === 'training'
+      ? trainingHasTimer(trainingPace)
+      : activeMode !== 'practice' && activeMode !== 'infinite';
+  const personalBestEligible = hasTimer && activeMode !== 'training';
   const roundDuration = activeMode === 'blitz' ? BLITZ_SECONDS : hasTimer ? ROUND_SECONDS : 0;
   const lengthBonus5Plus = activeMode === 'length-bonus-5-plus';
-  const isPractice = activeMode === 'practice' || activeMode === 'infinite';
+  const isPractice = activeMode === 'practice' || activeMode === 'infinite' || activeMode === 'training';
   const isEvolution = activeMode === 'evolution';
   const validMinLength = activeMode === 'long-words-only-4-plus' ? 4 : 2;
   const validWordsForSwipe =
@@ -260,8 +282,24 @@ export default function RandomBoardClient() {
   const evolutionBonusScore = evolutionLevels.reduce((total, level) => total + scoreEvolutionLevel(level), 0);
   const totalScore = baseScore + (isEvolution ? evolutionBonusScore : 0);
   const bonusCounts = useMemo(() => countBonuses(bonuses), [bonuses]);
+  const canInspectTrainingWord = canInspectSwipeResult(activeMode, trainingPace);
+  const matchingSavedBoards = useMemo(
+    () =>
+      savedBoards.filter((candidate) =>
+        boardMatchesTrainingSelection(candidate, trainingLetter, boardAbundance),
+      ),
+    [boardAbundance, savedBoards, trainingLetter],
+  );
+  const selectedSavedBoard = useMemo(
+    () => matchingSavedBoards.find((candidate) => candidate.id === selectedSavedBoardId) ?? null,
+    [matchingSavedBoards, selectedSavedBoardId],
+  );
   const canSwipe =
-    roundPhase === 'playing' && !finished && !isInspirationClosing && !(hasTimer && timeLeft <= 0);
+    roundPhase === 'playing' &&
+    !finished &&
+    !isInspirationClosing &&
+    !isRoutePreviewActive &&
+    !(hasTimer && timeLeft <= 0);
 
   const getWordlist = async () => {
     const response = await fetch('/api/wordlist');
@@ -284,6 +322,29 @@ export default function RandomBoardClient() {
     for (const word of wordlist) nextTrie.insert(word);
     setTrie(nextTrie);
   }, [wordlist, trie]);
+
+  useEffect(() => {
+    if (activeMode !== 'training' || trainingBoardSource !== 'saved' || savedBoards.length > 0) return;
+
+    setIsLoadingSavedBoards(true);
+    setSavedBoardsError('');
+    fetch('/api/boards')
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as { boards?: Board[]; error?: string } | null;
+        if (!response.ok) throw new Error(data?.error ?? 'Failed to load saved boards.');
+        setSavedBoards((data?.boards ?? []).map((candidate) => normalizeStoredBoard(candidate)));
+      })
+      .catch((error) => {
+        setSavedBoardsError(error instanceof Error ? error.message : 'Failed to load saved boards.');
+      })
+      .finally(() => setIsLoadingSavedBoards(false));
+  }, [activeMode, savedBoards.length, trainingBoardSource]);
+
+  useEffect(() => {
+    if (trainingBoardSource !== 'saved') return;
+    if (matchingSavedBoards.some((candidate) => candidate.id === selectedSavedBoardId)) return;
+    setSelectedSavedBoardId(matchingSavedBoards[0]?.id ?? '');
+  }, [matchingSavedBoards, selectedSavedBoardId, trainingBoardSource]);
 
   useEffect(() => {
     if (!board || !trie) return;
@@ -344,6 +405,11 @@ export default function RandomBoardClient() {
     setWordListFilter('all');
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
+    setDefinitionWord('');
+    setDefinition(null);
+    setIsDefinitionLoading(false);
+    setIsRoutePreviewActive(false);
+    routePreviewLockRef.current = false;
     setTrainingSeedWord(null);
     setPersistenceMessage('');
     setPlayRecordId(null);
@@ -358,6 +424,10 @@ export default function RandomBoardClient() {
 
   const startNewBoard = useCallback(async () => {
     if (!trie || isRollingBoard) return;
+    if (activeMode === 'training' && trainingBoardSource === 'saved' && !selectedSavedBoard) {
+      setStatusMessage('Choose a saved board that matches the selected letter and abundance.');
+      return;
+    }
 
     setIsRollingBoard(true);
     resetRoundState();
@@ -433,37 +503,53 @@ export default function RandomBoardClient() {
       return candidate.count > current.count;
     };
 
-    let bestResult = scoreCandidate(generateCandidateLetters());
-    let attemptsUsed = 1;
+    let bestResult: ReturnType<typeof scoreCandidate>;
+    let attemptsUsed = 0;
+    let acceptedExact = true;
+    let sourceBoard: CanonicalBoard | null = null;
 
-    const maxRollAttempts =
-      boardAbundance === 'very-rich'
-        ? MAX_BOARD_ROLL_ATTEMPTS * 5
-        : boardAbundance === 'rich'
-          ? MAX_BOARD_ROLL_ATTEMPTS * 2
-          : MAX_BOARD_ROLL_ATTEMPTS;
+    if (activeMode === 'training' && trainingBoardSource === 'saved' && selectedSavedBoard) {
+      sourceBoard = selectedSavedBoard;
+      setStatusMessage(`Loading saved board: ${sourceBoard.boardName}...`);
+      bestResult = scoreCandidate({
+        letters: sourceBoard.letters,
+        seedWord: sourceBoard.trainingSeedWord,
+      });
+    } else {
+      bestResult = scoreCandidate(generateCandidateLetters());
+      attemptsUsed = 1;
 
-    for (let attempt = 0; attempt < maxRollAttempts; attempt += 1) {
-      if (isAcceptableCandidate(bestResult)) break;
+      const maxRollAttempts =
+        boardAbundance === 'very-rich'
+          ? MAX_BOARD_ROLL_ATTEMPTS * 5
+          : boardAbundance === 'rich'
+            ? MAX_BOARD_ROLL_ATTEMPTS * 2
+            : MAX_BOARD_ROLL_ATTEMPTS;
 
-      attemptsUsed += 1;
-      const result = scoreCandidate(generateCandidateLetters());
-      if (isBetterCandidate(result, bestResult)) bestResult = result;
+      for (let attempt = 0; attempt < maxRollAttempts; attempt += 1) {
+        if (isAcceptableCandidate(bestResult)) break;
 
-      if (attempt % 15 === 14) {
-        setStatusMessage(
-          `Rolling ${boardAbundanceLabel(boardAbundance)}... best so far has ${bestResult.count} board words${
-            bestResult.allTilesCovered ? ' and full tile coverage' : ''
-          }.`,
-        );
-        await waitForNextFrame();
+        attemptsUsed += 1;
+        const result = scoreCandidate(generateCandidateLetters());
+        if (isBetterCandidate(result, bestResult)) bestResult = result;
+
+        if (attempt % 15 === 14) {
+          setStatusMessage(
+            `Rolling ${boardAbundanceLabel(boardAbundance)}... best so far has ${bestResult.count} board words${
+              bestResult.allTilesCovered ? ' and full tile coverage' : ''
+            }.`,
+          );
+          await waitForNextFrame();
+        }
       }
-    }
 
-    if (!isAcceptableCandidate(bestResult)) {
-      const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter, boardAbundance);
-      const fallbackResult = scoreCandidate({ letters: fallbackLetters, seedWord: null });
-      if (isBetterCandidate(fallbackResult, bestResult)) bestResult = fallbackResult;
+      if (!isAcceptableCandidate(bestResult)) {
+        const fallbackLetters = fallbackBoardForMode(activeMode, trainingLetter, boardAbundance);
+        const fallbackResult = scoreCandidate({ letters: fallbackLetters, seedWord: null });
+        if (isBetterCandidate(fallbackResult, bestResult)) bestResult = fallbackResult;
+      }
+
+      acceptedExact = isAcceptableCandidate(bestResult);
     }
 
     const sortedAllWords = bestResult.found.sort((a, b) =>
@@ -474,28 +560,27 @@ export default function RandomBoardClient() {
     const nextBonuses =
       isPractice || isEvolution
         ? Array(BOARD_SIZE * BOARD_SIZE).fill(null)
-        : generateBonuses(
-            effectiveRound,
-            bestResult.letters,
-            activeMode === 'training' ? trainingLetter : undefined,
-          );
-    const acceptedExact = isAcceptableCandidate(bestResult);
+        : generateBonuses(effectiveRound, bestResult.letters);
     const seedWord = activeMode === 'training' ? bestResult.seedWord : null;
     const actualAbundance = classifyBoardAbundance(sortedAllWords.length);
+    const generatedBoardName =
+      activeMode === 'training' && seedWord
+        ? `${seedWord} ${boardAbundanceLabel(actualAbundance)} training board`
+        : `${modeTitle(activeMode)} ${boardAbundanceLabel(actualAbundance)} ${effectiveRound.toUpperCase()}`;
+    const activeBoardName = sourceBoard
+      ? `${sourceBoard.boardName} · ${trainingPace === 'timed' ? 'timed' : 'untimed'} training`
+      : generatedBoardName;
 
     setTrainingSeedWord(seedWord);
     setBoard({
-      id: `practice-${Date.now()}`,
-      author: 'Practice Lab',
-      boardName:
-        activeMode === 'training' && seedWord
-          ? `${seedWord} ${boardAbundanceLabel(actualAbundance)} training board`
-          : `${modeTitle(activeMode)} ${boardAbundanceLabel(actualAbundance)} ${effectiveRound.toUpperCase()}`,
+      id: sourceBoard ? `saved-training-${sourceBoard.id}-${Date.now()}` : `practice-${Date.now()}`,
+      author: sourceBoard?.author ?? 'Practice Lab',
+      boardName: activeBoardName,
       size: BOARD_SIZE,
       letters: bestResult.letters,
-      date: new Date().toISOString().split('T')[0],
-      theme: activeMode === 'training' ? 'Rare Letters' : undefined,
-      subtheme: activeMode === 'training' ? trainingLetter : undefined,
+      date: sourceBoard?.date || new Date().toISOString().split('T')[0],
+      theme: sourceBoard?.theme ?? (activeMode === 'training' ? 'Rare Letters' : undefined),
+      subtheme: sourceBoard?.subtheme ?? (activeMode === 'training' ? trainingLetter : undefined),
       sourceMode: activeMode,
       abundance: actualAbundance,
       trainingSeedWord: seedWord,
@@ -507,11 +592,13 @@ export default function RandomBoardClient() {
     setRoundPhase(hasTimer ? 'countdown' : 'playing');
     setCountdown(hasTimer ? 3 : 0);
     setStatusMessage(
-      `${acceptedExact ? 'Board ready' : 'Closest board ready'} with ${sortedAllWords.length} total words (${boardAbundanceLabel(
-        actualAbundance,
-      )}) after ${attemptsUsed} roll${attemptsUsed === 1 ? '' : 's'}${
-        seedWord ? ` · seed word: ${seedWord}` : ''
-      }.`,
+      sourceBoard
+        ? `Saved board ready with ${sortedAllWords.length} total words (${boardAbundanceLabel(actualAbundance)}).`
+        : `${acceptedExact ? 'Board ready' : 'Closest board ready'} with ${sortedAllWords.length} total words (${boardAbundanceLabel(
+            actualAbundance,
+          )}) after ${attemptsUsed} roll${attemptsUsed === 1 ? '' : 's'}${
+            seedWord ? ` · seed word: ${seedWord}` : ''
+          }.`,
     );
 
     if (session?.user) {
@@ -521,10 +608,7 @@ export default function RandomBoardClient() {
         body: JSON.stringify({
           action: 'create',
           round: {
-            boardName:
-              activeMode === 'training' && seedWord
-                ? `${seedWord} ${boardAbundanceLabel(actualAbundance)} training board`
-                : `${modeTitle(activeMode)} ${boardAbundanceLabel(actualAbundance)} ${effectiveRound.toUpperCase()}`,
+            boardName: activeBoardName,
             size: BOARD_SIZE,
             letters: bestResult.letters,
             bonuses: nextBonuses,
@@ -564,7 +648,10 @@ export default function RandomBoardClient() {
     resetRoundState,
     roundDuration,
     session?.user,
+    selectedSavedBoard,
+    trainingBoardSource,
     trainingLetter,
+    trainingPace,
     trie,
     wordlist,
   ]);
@@ -866,8 +953,50 @@ export default function RandomBoardClient() {
     [board, bonuses, isPractice, lengthBonus5Plus],
   );
 
+  const inspectTrainingWord = useCallback(
+    async (word: string) => {
+      if (!board || !canInspectTrainingWord || routePreviewLockRef.current) return;
+
+      routePreviewLockRef.current = true;
+      setIsRoutePreviewActive(true);
+      setDefinitionWord(word);
+      setDefinition(null);
+      setIsDefinitionLoading(true);
+
+      void fetch(`/api/dictionary/definition?word=${encodeURIComponent(word)}`)
+        .then(async (response) => {
+          const data = (await response.json().catch(() => null)) as { definition?: string } | null;
+          setDefinition(
+            response.ok ? (data?.definition ?? 'Definition not found.') : 'Failed to load definition.',
+          );
+        })
+        .catch(() => setDefinition('Failed to load definition.'))
+        .finally(() => setIsDefinitionLoading(false));
+
+      const route = bestRouteForWord(board.size, board.letters, word, bonuses, {
+        lengthBonus5Plus,
+        practice: false,
+      });
+      try {
+        if (route) {
+          await animateRoutePreview(route.path, setHighlightedRoute, wait);
+          setSelectedRouteInfo(`${word} · swipe ${formatRoute(route.path)}`);
+        } else {
+          await wait(1000);
+          setSelectedRouteInfo(`${word}: no route found.`);
+        }
+      } finally {
+        setHighlightedRoute([]);
+        setIsRoutePreviewActive(false);
+        routePreviewLockRef.current = false;
+      }
+    },
+    [board, bonuses, canInspectTrainingWord, lengthBonus5Plus],
+  );
+
   const showWordRouteFromModal = (word: string) => {
-    selectWordRoute(word);
+    if (canInspectTrainingWord) void inspectTrainingWord(word);
+    else selectWordRoute(word);
     setOpenWordList(false);
   };
 
@@ -1032,6 +1161,26 @@ export default function RandomBoardClient() {
     setStatusMessage('Training letter changed. Press Start when ready.');
   };
 
+  const changeTrainingPace = (pace: TrainingPace) => {
+    setTrainingPace(pace);
+    setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage(`${pace === 'timed' ? 'Timed' : 'Untimed'} training selected. Press Start when ready.`);
+  };
+
+  const changeTrainingBoardSource = (source: TrainingBoardSource) => {
+    setTrainingBoardSource(source);
+    setBoard(null);
+    setRoundPhase('idle');
+    setCountdown(0);
+    setTimeLeft(0);
+    setStatusMessage(
+      source === 'random' ? 'Random training boards selected.' : 'Choose a saved training board.',
+    );
+  };
+
   const leaveBoard = () => {
     void saveRoundProgress(roundPhase === 'finished');
     setBoard(null);
@@ -1042,6 +1191,9 @@ export default function RandomBoardClient() {
     setOpenWordList(false);
     setHighlightedRoute([]);
     setSelectedRouteInfo('');
+    setDefinitionWord('');
+    setDefinition(null);
+    setIsDefinitionLoading(false);
     setPersistenceMessage('');
     setStatusMessage('Choose a mode, then press Start.');
   };
@@ -1058,12 +1210,19 @@ export default function RandomBoardClient() {
           : 'mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-4 pb-16 pt-6'
       }
     >
+      {isRoutePreviewActive && (
+        <div
+          className="fixed inset-0 z-[100] cursor-wait bg-transparent"
+          aria-label="Route preview in progress"
+          role="status"
+        />
+      )}
       {!board && (
         <section className="w-full rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <div className="mb-3 flex flex-col gap-1">
             <h1 className="text-2xl font-black">Word Blitz Practice Lab</h1>
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              Pick a practice/event/training mode. Multipliers are generated per board and never overlap.
+              Training now contains both timed and untimed practice. Event modes keep their own scoring rules.
             </p>
           </div>
 
@@ -1133,25 +1292,127 @@ export default function RandomBoardClient() {
           )}
 
           {mode === 'training' && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
-              <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
-                Training letter
+            <div className="mt-4 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <div>
+                <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
+                  Training timer
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      ['timed', 'Timed training', '80 seconds; the former Practice mode.'],
+                      ['untimed', 'Untimed training', 'No time limit; the former Infinity mode.'],
+                    ] as const
+                  ).map(([pace, label, description]) => (
+                    <button
+                      key={pace}
+                      className={`rounded-lg border p-3 text-left text-sm ${
+                        trainingPace === pace
+                          ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
+                          : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
+                      }`}
+                      onClick={() => changeTrainingPace(pace)}
+                    >
+                      <div className="font-bold">{label}</div>
+                      <div className="text-xs opacity-75">{description}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {TRAINING_LETTERS.map((letter) => (
-                  <button
-                    key={letter}
-                    className={`h-11 w-11 rounded-lg border text-xl font-black ${
-                      trainingLetter === letter
-                        ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
-                        : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
-                    }`}
-                    onClick={() => changeTrainingLetter(letter)}
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
+                  Board source
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      [
+                        'random',
+                        'Random board',
+                        'Generate a board matching the selected letter and abundance.',
+                      ],
+                      ['saved', 'Saved board', 'Load a stored board into the same training interface.'],
+                    ] as const
+                  ).map(([source, label, description]) => (
+                    <button
+                      key={source}
+                      className={`rounded-lg border p-3 text-left text-sm ${
+                        trainingBoardSource === source
+                          ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
+                          : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
+                      }`}
+                      onClick={() => changeTrainingBoardSource(source)}
+                    >
+                      <div className="font-bold">{label}</div>
+                      <div className="text-xs opacity-75">{description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-bold text-emerald-700 dark:text-emerald-200">
+                  Training letter
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {TRAINING_LETTERS.map((letter) => (
+                    <button
+                      key={letter}
+                      className={`h-11 w-11 rounded-lg border text-xl font-black ${
+                        trainingLetter === letter
+                          ? 'border-emerald-500 bg-white text-emerald-700 dark:bg-zinc-900 dark:text-emerald-200'
+                          : 'border-emerald-200 bg-emerald-100/50 dark:border-emerald-900 dark:bg-zinc-900'
+                      }`}
+                      onClick={() => changeTrainingLetter(letter)}
+                    >
+                      {letter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {trainingBoardSource === 'saved' && (
+                <div className="rounded-lg border border-emerald-200 bg-white/70 p-3 dark:border-emerald-900 dark:bg-zinc-900/80">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <label htmlFor="saved-training-board" className="text-sm font-bold">
+                      Matching saved boards
+                    </label>
+                    <Link
+                      href="/boards"
+                      className="text-xs font-bold text-blue-600 hover:underline dark:text-blue-300"
+                    >
+                      Open full Boards library
+                    </Link>
+                  </div>
+                  <select
+                    id="saved-training-board"
+                    value={selectedSavedBoardId}
+                    onChange={(event) => setSelectedSavedBoardId(event.target.value)}
+                    disabled={isLoadingSavedBoards || matchingSavedBoards.length === 0}
+                    className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm dark:border-emerald-900 dark:bg-zinc-950"
                   >
-                    {letter}
-                  </button>
-                ))}
-              </div>
+                    {matchingSavedBoards.length === 0 ? (
+                      <option value="">
+                        {isLoadingSavedBoards ? 'Loading saved boards...' : 'No matching saved board'}
+                      </option>
+                    ) : (
+                      matchingSavedBoards.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.boardName} · {candidate.author}
+                          {candidate.abundance ? ` · ${candidate.abundance}` : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {savedBoardsError && (
+                    <p className="mt-2 text-xs font-semibold text-red-600">{savedBoardsError}</p>
+                  )}
+                  <p className="mt-2 text-xs text-emerald-800/80 dark:text-emerald-100/80">
+                    Generated and stored boards are normalized to the same 4×4 board shape before training.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1187,7 +1448,11 @@ export default function RandomBoardClient() {
             <button
               className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow hover:bg-blue-700"
               onClick={startNewBoard}
-              disabled={!trie || isRollingBoard}
+              disabled={
+                !trie ||
+                isRollingBoard ||
+                (mode === 'training' && trainingBoardSource === 'saved' && !selectedSavedBoard)
+              }
             >
               {isRollingBoard
                 ? 'Rolling...'
@@ -1211,11 +1476,13 @@ export default function RandomBoardClient() {
                   {modeTitle(activeMode)}
                 </div>
                 <div className="text-xl font-black text-gray-950 dark:text-zinc-50">
-                  {activeMode === 'quadruple-bonus'
-                    ? 'R4'
-                    : isRoundMode(activeMode)
-                      ? roundMode.toUpperCase()
-                      : 'free'}{' '}
+                  {activeMode === 'training'
+                    ? `${trainingPace === 'timed' ? 'timed' : 'untimed'} · ${trainingBoardSource}`
+                    : activeMode === 'quadruple-bonus'
+                      ? 'R4'
+                      : isRoundMode(activeMode)
+                        ? roundMode.toUpperCase()
+                        : 'free'}{' '}
                   · {board.letters}
                 </div>
                 <div className="mt-1 text-xs font-semibold text-gray-500 dark:text-zinc-400">
@@ -1265,7 +1532,11 @@ export default function RandomBoardClient() {
                 <button
                   className="rounded-full bg-blue-600 px-3 py-1 font-bold text-white hover:bg-blue-700"
                   onClick={startNewBoard}
-                  disabled={!trie || isRollingBoard}
+                  disabled={
+                    !trie ||
+                    isRollingBoard ||
+                    (mode === 'training' && trainingBoardSource === 'saved' && !selectedSavedBoard)
+                  }
                 >
                   {isRollingBoard ? 'Rolling...' : 'Reroll'}
                 </button>
@@ -1284,6 +1555,15 @@ export default function RandomBoardClient() {
               </div>
             )}
 
+            {canInspectTrainingWord && definitionWord && (
+              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+                <div className="font-black text-emerald-800 dark:text-emerald-100">{definitionWord}</div>
+                <div className="mt-1 text-sm italic text-emerald-900/80 dark:text-emerald-100/80">
+                  {isDefinitionLoading ? 'Loading definition...' : (definition ?? 'Definition not found.')}
+                </div>
+              </div>
+            )}
+
             <div className="wb-board-stage relative">
               <SquareBoard
                 size={board.size}
@@ -1298,7 +1578,7 @@ export default function RandomBoardClient() {
                 highlightedRoute={highlightedRoute}
                 disabled={!canSwipe || isInspirationAnimating}
                 onSubmitTerm={handleSubmitTerm}
-                onWordClick={selectWordRoute}
+                onWordClick={canInspectTrainingWord ? (word) => void inspectTrainingWord(word) : undefined}
               />
 
               {roundPhase === 'countdown' && (
@@ -1398,7 +1678,11 @@ export default function RandomBoardClient() {
                       <button
                         key={item.word}
                         className="flex w-full justify-between rounded-lg px-2 py-1 text-left hover:bg-gray-100 dark:hover:bg-zinc-800"
-                        onClick={() => selectWordRoute(item.word)}
+                        onClick={() =>
+                          canInspectTrainingWord
+                            ? void inspectTrainingWord(item.word)
+                            : selectWordRoute(item.word)
+                        }
                       >
                         <span>
                           {item.inspired ? '💡 ' : ''}

@@ -205,7 +205,32 @@ describe('SquareBoard', () => {
     fireEvent.mouseUp(tile(1));
 
     expect(setSwiped).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('AB')).not.toHaveStyle({ color: 'rgb(0, 128, 0)' });
+    expect(screen.getByText('AB')).toHaveStyle({ color: 'rgb(0, 128, 0)' });
+  });
+
+  it('uses the same yellow feedback for an already-found word without a mode callback', () => {
+    const { tile } = renderBoard({ onSubmitTerm: undefined, swiped: { AB: true } });
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+    fireEvent.mouseUp(tile(1));
+
+    expect(screen.getByText('AB')).toHaveStyle({ color: 'rgb(255, 255, 0)' });
+  });
+
+  it('does not make green or yellow feedback clickable unless a click handler is supplied', () => {
+    const onWordClick = vi.fn();
+    const { tile, rerender, props } = renderBoard({ onWordClick });
+
+    fireEvent.mouseDown(tile(0));
+    fireEvent.mouseEnter(tile(1));
+    fireEvent.mouseUp(tile(1));
+    fireEvent.click(screen.getByText('AB'));
+    expect(onWordClick).toHaveBeenCalledWith('AB');
+
+    rerender(React.createElement(SquareBoard, { ...props, onWordClick: undefined }));
+    fireEvent.click(screen.getByText('AB'));
+    expect(onWordClick).toHaveBeenCalledTimes(1);
   });
 
   it('ignores touch movement that only grazes the outer edge of a neighboring tile', () => {

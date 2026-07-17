@@ -1,12 +1,13 @@
 import { sql } from '@vercel/postgres';
 import { Board } from './definitions';
+import { normalizeStoredBoard } from './training-mode';
 
 export async function fetchBoards() {
   try {
     const data = await sql<Board>`SELECT * FROM boards ORDER BY date DESC`;
     console.log(data.rows);
 
-    return data.rows;
+    return data.rows.map((board) => normalizeStoredBoard(board));
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch revenue data.');
@@ -22,7 +23,7 @@ export async function fetchBoardById(id: string) {
       WHERE boards.id = ${id};
     `;
 
-    return data.rows[0];
+    return data.rows[0] ? normalizeStoredBoard(data.rows[0]) : undefined;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch board.');

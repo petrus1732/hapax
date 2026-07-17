@@ -5,6 +5,8 @@ const nextConfig = {
   },
   outputFileTracing: true,
   experimental: {
+    cpus: 1,
+    workerThreads: false,
     outputFileTracingIncludes: {
       '/dictionary': ['./app/lib/dictionary.json'],
     },

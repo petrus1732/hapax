@@ -117,7 +117,8 @@ describe('Tile', () => {
 
     expect(props.onStart).toHaveBeenCalledWith(3, 0);
     expect(props.onMove).toHaveBeenCalledTimes(1);
-    expect(props.onMove.mock.calls[0][0]).toBe(3);
-    expect(props.onMove.mock.calls[0][1]).toBeCloseTo(0.44);
+    const onMove = vi.mocked(props.onMove);
+    expect(onMove.mock.calls[0][0]).toBe(3);
+    expect(onMove.mock.calls[0][1]).toBeCloseTo(0.44);
   });
 });

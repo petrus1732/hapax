@@ -126,7 +126,7 @@ export default function BoardClient({ params }: { params: { id: string } }) {
       const fetchData = async () => {
         try {
           const fetchedBoard = await fetchBoardById(params.id);
-          setBoard(fetchedBoard);
+          setBoard(fetchedBoard ?? null);
         } catch (error) {
           console.error('Error fetching board:', error);
         }

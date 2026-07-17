@@ -176,7 +176,7 @@ export default function SquareBoard({
         if (isAlreadyFound) setWordColor('yellow');
         else {
           setSwiped((arr) => ({ ...arr, [word]: true }));
-          setWordColor('inherit');
+          setWordColor('green');
         }
       } else {
         setWordColor('red');
@@ -221,7 +221,8 @@ export default function SquareBoard({
   }, [tileCount]);
 
   const currentWord = path.map((id) => letters[id]).join('');
-  const isClickable = wordColor === 'green' || wordColor === 'yellow';
+  const isFeedbackWord = wordColor === 'green' || wordColor === 'yellow';
+  const isClickable = Boolean(onWordClick) && isFeedbackWord;
   const routePath = isRecording ? path : highlightedRoute;
   const highlighted = new Set(isRecording ? [] : highlightedRoute);
   const routePolylinePoints =
@@ -236,10 +237,11 @@ export default function SquareBoard({
         <div
           style={{
             color: wordColor,
-            borderColor: isClickable ? wordColor : 'transparent',
+            borderColor: isFeedbackWord ? wordColor : 'transparent',
             visibility: currentWord ? 'visible' : 'hidden',
             fontSize: `${Math.max(14, metrics.selectedWordFontSize)}px`,
           }}
+          data-word-feedback={wordColor}
           className={`flex items-center justify-center rounded-full border-2 px-3 py-0 font-bold transition-all ${
             isClickable
               ? 'cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-800'
